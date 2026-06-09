@@ -1,48 +1,105 @@
 <template>
-  <div class="container">
-    <div v-if="loading" class="card text-center">
-      <div class="spinner"></div>
-      <h2>系统握手中...</h2>
-      <p>正在与 Go 核心引擎建立安全连接</p>
+  <div>
+    <div v-if="loading" class="container">
+      <div class="card text-center">
+        <div class="spinner"></div>
+        <h2>系统握手中...</h2>
+        <p>正在与 Go 核心引擎建立安全连接</p>
+      </div>
     </div>
 
-    <div v-else-if="needInit" class="card fade-in">
-      <div class="header">
-        <h2>🚀 大探长面板初始化</h2>
-        <p>首次运行，请设置您的最高管理员安全凭证。</p>
+    <div v-else-if="needInit" class="container">
+      <div class="card fade-in">
+        <div class="header">
+          <h2>🚀 大探长面板初始化</h2>
+          <p>首次运行，请设置您的最高管理员安全凭证。</p>
+        </div>
+        <form @submit.prevent="submitInit">
+          <div class="form-group">
+            <label>设置管理员账号</label>
+            <input v-model="initForm.username" type="text" required placeholder="例如: admin" />
+          </div>
+          <div class="form-group">
+            <label>设置高强度密码</label>
+            <input v-model="initForm.password" type="password" required placeholder="字母与数字组合" />
+          </div>
+          <button type="submit" :disabled="submitting" class="btn-primary">
+            {{ submitting ? '配置安全加密中...' : '保存并初始化系统' }}
+          </button>
+          <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+        </form>
       </div>
-      <form @submit.prevent="submitInit">
-        <div class="form-group">
-          <label>设置管理员账号</label>
-          <input 
-            v-model="form.username" 
-            type="text" 
-            required 
-            placeholder="例如: admin" 
-            autocomplete="username"
-          />
-        </div>
-        <div class="form-group">
-          <label>设置高强度密码</label>
-          <input 
-            v-model="form.password" 
-            type="password" 
-            required 
-            placeholder="请使用大小写字母与数字组合" 
-            autocomplete="new-password"
-          />
-        </div>
-        <button type="submit" :disabled="submitting">
-          {{ submitting ? '配置安全加密中...' : '保存并初始化系统' }}
-        </button>
-        <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-      </form>
     </div>
 
-    <div v-else class="card dashboard fade-in">
-      <h2>✅ 验证通过，欢迎进入控制台</h2>
-      <p>基础通信与安全拦截模块已就绪。</p>
+    <div v-else class="dashboard fade-in">
+      <header class="dash-header">
+        <div class="dash-title">
+          <h2>🛡️ OCI 大探长控制台</h2>
+          <p>核心加密引擎运行中</p>
+        </div>
+        <button @click="showModal = true" class="btn-primary">+ 纳管新账号</button>
+      </header>
+
+      <div class="account-grid">
+        <div v-if="accounts.length === 0" class="empty-state">
+          <p>📭 暂无纳管的甲骨文账号</p>
+          <span>请点击右上角按钮添加你的第一个 API 凭证</span>
+        </div>
+        
+        <div v-for="acc in accounts" :key="acc.id" class="account-card">
+          <div class="card-head">
+            <h3>{{ acc.alias }}</h3>
+            <span class="region-badge">{{ acc.region }}</span>
+          </div>
+          <div class="card-body">
+            <p><strong>租户 ID:</strong> <span class="truncate">{{ acc.tenancy_id }}</span></p>
+            <p><strong>指纹:</strong> <span class="truncate">{{ acc.fingerprint }}</span></p>
+          </div>
+          <div class="card-actions">
+            <button class="btn-text">测试连接</button>
+            <button class="btn-text">实例管理</button>
+          </div>
+        </div>
       </div>
+
+      <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
+        <div class="modal-content fade-in-up">
+          <div class="modal-header">
+            <h3>添加甲骨文 API 凭证</h3>
+            <button class="close-btn" @click="showModal = false">×</button>
+          </div>
+          <form @submit.prevent="submitAddAccount">
+            <div class="form-group">
+              <label>账号别名 (如: 首尔主号)</label>
+              <input v-model="addForm.alias" type="text" required />
+            </div>
+            <div class="form-group">
+              <label>主区域 (Region, 如: ap-seoul-1)</label>
+              <input v-model="addForm.region" type="text" required />
+            </div>
+            <div class="form-group">
+              <label>租户 OCID (Tenancy ID)</label>
+              <input v-model="addForm.tenancy_id" type="text" required />
+            </div>
+            <div class="form-group">
+              <label>用户 OCID (User ID)</label>
+              <input v-model="addForm.user_id" type="text" required />
+            </div>
+            <div class="form-group">
+              <label>公钥指纹 (Fingerprint)</label>
+              <input v-model="addForm.fingerprint" type="text" required />
+            </div>
+            <div class="form-group">
+              <label>私钥文本 (Private Key, 自动进行 AES 高强度加密)</label>
+              <textarea v-model="addForm.private_key" rows="5" required placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"></textarea>
+            </div>
+            <button type="submit" :disabled="submitting" class="btn-primary mt-2">
+              {{ submitting ? '加密入库中...' : '安全保存凭证' }}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -50,204 +107,105 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
-// 页面核心状态
+// 状态控制
 const loading = ref(true)
 const needInit = ref(false)
 const submitting = ref(false)
 const errorMessage = ref('')
+const showModal = ref(false)
 
-// 表单数据
-const form = ref({
-  username: '',
-  password: ''
+// 数据集
+const accounts = ref([])
+
+// 表单对象
+const initForm = ref({ username: '', password: '' })
+const addForm = ref({
+  alias: '', tenancy_id: '', user_id: '', fingerprint: '', region: '', private_key: ''
 })
 
-// 探测后端引擎状态
+// 系统握手探测
 const checkSystemStatus = async () => {
   try {
-    // 页面加载即向后端请求状态
     const res = await axios.get('/api/status')
-    
-    // 如果后端的 BasicAuth 拦截器返回了待初始化指令
-    if (res.data && res.data.need_init) {
-      needInit.value = true
-    } else {
-      needInit.value = false
+    needInit.value = res.data && res.data.need_init
+    if (!needInit.value) {
+      fetchAccounts() // 如果已初始化并登录成功，拉取账号列表
     }
   } catch (error) {
-    // 【核心机制】如果系统已初始化，后端会直接返回 401 Unauthorized。
-    // 这时浏览器原生的 Basic Auth 弹窗会自动接管，要求用户输入账号密码。
     if (error.response && error.response.status === 401) {
-      needInit.value = false
-    } else {
-      errorMessage.value = '无法连接到后端引擎，请检查容器日志。'
+      needInit.value = false // 浏览器会弹出 Basic Auth
     }
   } finally {
-    // 延迟 500ms 移除 Loading 状态，让界面过渡更平滑
     setTimeout(() => { loading.value = false }, 500)
   }
 }
 
-// 提交初始化注册
+// 提交初始化
 const submitInit = async () => {
   submitting.value = true
-  errorMessage.value = ''
-  
   try {
-    const res = await axios.post('/api/system/init', form.value)
+    const res = await axios.post('/api/system/init', initForm.value)
     if (res.data.status === 'success') {
-      alert('面板初始化成功！系统即将重载以应用底层安全拦截机制。')
-      // 重载页面，强制触发并唤起浏览器的 Basic Auth 账号密码登录输入框
+      alert('面板初始化成功！请刷新页面以加载底层安全拦截。')
       window.location.reload()
     }
   } catch (error) {
-    errorMessage.value = error.response?.data?.error || '初始化请求失败，请检查系统日志。'
+    errorMessage.value = error.response?.data?.error || '初始化失败'
   } finally {
     submitting.value = false
   }
 }
 
-// Vue 挂载时立即执行探测
+// 获取已绑定的账号列表
+const fetchAccounts = async () => {
+  try {
+    const res = await axios.get('/api/accounts/list')
+    accounts.value = res.data || []
+  } catch (error) {
+    console.error('拉取账号失败:', error)
+  }
+}
+
+// 提交新增账号
+const submitAddAccount = async () => {
+  submitting.value = true
+  try {
+    const res = await axios.post('/api/accounts/add', addForm.value)
+    if (res.data.status === 'success') {
+      showModal.value = false
+      addForm.value = { alias: '', tenancy_id: '', user_id: '', fingerprint: '', region: '', private_key: '' }
+      fetchAccounts() // 刷新列表
+    }
+  } catch (error) {
+    alert(error.response?.data?.error || '添加失败，请检查输入')
+  } finally {
+    submitting.value = false
+  }
+}
+
 onMounted(() => {
   checkSystemStatus()
 })
 </script>
 
 <style>
-/* 极简无依赖的纯 CSS 样式库，保障前端体积轻如鸿毛 */
+/* 全局与布局基础 */
 body {
   background-color: #f4f4f5;
   color: #27272a;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
 }
+.container { display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+.card { background: #fff; padding: 32px; border-radius: 16px; width: 100%; max-width: 420px; box-shadow: 0 4px 6px -2px rgba(0,0,0,0.05); }
 
-.container {
-  width: 100%;
-  max-width: 420px;
-  padding: 20px;
-  box-sizing: border-box;
-}
+/* 控制台布局 */
+.dashboard { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
+.dash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+.dash-title h2 { margin: 0; color: #18181b; }
+.dash-title p { margin: 4px 0 0; color: #10b981; font-size: 14px; font-weight: 500; }
 
-.card {
-  background: #ffffff;
-  padding: 32px;
-  border-radius: 16px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-}
-
-.header {
-  text-align: center;
-  margin-bottom: 28px;
-}
-
-.header h2 {
-  margin: 0 0 8px;
-  font-size: 24px;
-  color: #18181b;
-}
-
-.header p {
-  margin: 0;
-  color: #71717a;
-  font-size: 14px;
-}
-
-.form-group {
-  margin-bottom: 18px;
-}
-
-label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 600;
-  color: #3f3f46;
-  font-size: 14px;
-}
-
-input {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #d4d4d8;
-  border-radius: 8px;
-  box-sizing: border-box;
-  font-size: 14px;
-  background-color: #fafafa;
-  transition: all 0.2s;
-}
-
-input:focus {
-  outline: none;
-  border-color: #000000;
-  background-color: #ffffff;
-  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
-}
-
-button {
-  width: 100%;
-  padding: 14px;
-  background-color: #000000;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 10px;
-  transition: background-color 0.2s;
-}
-
-button:hover:not(:disabled) {
-  background-color: #27272a;
-}
-
-button:disabled {
-  background-color: #a1a1aa;
-  cursor: not-allowed;
-}
-
-.error {
-  color: #ef4444;
-  font-size: 14px;
-  margin-top: 16px;
-  text-align: center;
-  font-weight: 500;
-}
-
-.text-center {
-  text-align: center;
-}
-
-.dashboard h2 {
-  color: #10b981;
-}
-
-/* 小动画：加载 Spinner 和界面淡入 */
-.spinner {
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #000000;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  animation: spin 1s linear infinite;
-  margin: 0 auto 16px;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-</style>
+/* 账号卡片网格 */
+.account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+.empty-state { grid-column: 1 / -1; text-align: center; padding: 60px 0; background: #fff; border-radius: 12px; border: 2px dashed #e4e4e7; color: #71717a; }
+.account-card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); border
