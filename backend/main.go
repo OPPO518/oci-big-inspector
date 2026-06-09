@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"embed"
-	"encoding/json"
+	"json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -81,6 +81,9 @@ func main() {
 				HandleListAccounts(w, r)
 			case "/api/accounts/test":
 				HandleTestConnection(w, r)
+			// 🚀 新增：注册物理卸载凭证接口
+			case "/api/accounts/delete":
+				HandleDeleteAccount(w, r)
 			case "/api/system/config/get":
 				HandleGetSystemConfig(w, r)
 			case "/api/system/config/save":
@@ -130,15 +133,12 @@ func main() {
 // HandleSystemMonitor 核心监控处理器
 func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 	var stats MonitorStats
-
-	// 1. 统计数据库指标
 	_ = DB.QueryRow("SELECT COUNT(*) FROM oci_accounts").Scan(&stats.TotalApis)
 	_ = DB.QueryRow("SELECT COUNT(*) FROM oci_accounts WHERE status = 'active'").Scan(&stats.TotalBoots)
 	stats.TotalRuns = stats.TotalApis * 14
 	stats.SuccessRuns = stats.TotalBoots
 	stats.FailRuns = stats.TotalRuns - stats.SuccessRuns
 
-	// 2. 采集物理硬件架构
 	stats.CpuModel = "Intel(R) Xeon(R) CPU @ 2.20GHz"
 	if runtime.GOARCH == "arm64" {
 		stats.CpuModel = "Oracle Ampere Altra Core"
@@ -146,39 +146,29 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 	stats.ArchInfo = runtime.GOARCH
 	stats.OsInfo = runtime.GOOS
 
-	// 3. 读取真实内存信息 (/proc/meminfo)
-	stats.MemTotal = 1.93
-	stats.MemUsed = 1.05
-	stats.MemUsagePct = 54
+	stats.MemTotal = 3.83
+	stats.MemUsed = 0.57
+	stats.MemUsagePct = 14
 	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
 		var total, free, available int64
 		lines := strings.Split(string(data), "\n")
 		for _, line := range lines {
-			if strings.HasPrefix(line, "MemTotal:") {
-				fmt.Sscanf(line, "MemTotal: %d", &total)
-			}
-			if strings.HasPrefix(line, "MemAvailable:") {
-				fmt.Sscanf(line, "MemAvailable: %d", &available)
-			}
-			if strings.HasPrefix(line, "MemFree:") {
-				fmt.Sscanf(line, "MemFree: %d", &free)
-			}
+			if strings.HasPrefix(line, "MemTotal:") { fmt.Sscanf(line, "MemTotal: %d", &total) }
+			if strings.HasPrefix(line, "MemAvailable:") { fmt.Sscanf(line, "MemAvailable: %d", &available) }
+			if strings.HasPrefix(line, "MemFree:") { fmt.Sscanf(line, "MemFree: %d", &free) }
 		}
 		if total > 0 {
 			stats.MemTotal = float64(total) / 1024 / 1024
 			used := total - available
-			if available == 0 {
-				used = total - free
-			}
+			if available == 0 { used = total - free }
 			stats.MemUsed = float64(used) / 1024 / 1024
 			stats.MemUsagePct = int((float64(used) / float64(total)) * 100)
 		}
 	}
 
-	// 4. 读取真实磁盘空间
 	stats.DiskTotal = 9.65
-	stats.DiskUsed = 2.45
-	stats.DiskUsagePct = 26
+	stats.DiskUsed = 3.22
+	stats.DiskUsagePct = 33
 	cmd := exec.Command("df", "-m", "/app/data")
 	if output, err := cmd.Output(); err == nil {
 		lines := strings.Split(string(output), "\n")
@@ -197,7 +187,6 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 5. 系统状态辅助模拟
 	stats.CpuUsage = 5 + time.Now().Second()%15
 	stats.Uptime = "1hour 18min"
 	stats.Processes = 69
@@ -206,48 +195,36 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
-// --- TELEGRAM 核心热启动引擎 ---
-
+// StartTgBotEngine 异步监听
 func StartTgBotEngine(token string) {
 	tgMu.Lock()
-	if tgBotCancel != nil {
-		close(tgBotCancel)
-	}
+	if tgBotCancel != nil { close(tgBotCancel) }
 	tgBotCancel = make(chan struct{})
 	activeToken = token
 	ch := tgBotCancel
 	tgMu.Unlock()
 
 	log.Printf("🤖 Telegram Bot 核心开始建立监听通道...")
-	
 	go func() {
 		offset := 0
 		client := &http.Client{Timeout: 25 * time.Second}
 		for {
 			select {
-			case <-ch:
-				return
+			case <-ch: return
 			default:
 				url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=20", activeToken, offset)
 				resp, err := client.Get(url)
-				if err != nil {
-					time.Sleep(5 * time.Second)
-					continue
-				}
-				
+				if err != nil { time.Sleep(5 * time.Second); continue }
 				var updateData struct {
 					Ok     bool `json:"ok"`
 					Result []struct {
 						UpdateID int `json:"update_id"`
 						Message  struct {
-							Chat struct {
-								ID int64 `json:"id"`
-							} `json:"chat"`
+							Chat struct { ID int64 `json:"id"` } `json:"chat"`
 							Text string `json:"text"`
 						} `json:"message"`
 					} `json:"result"`
 				}
-				
 				if err := json.NewDecoder(resp.Body).Decode(&updateData); err == nil && updateData.Ok {
 					for _, upd := range updateData.Result {
 						offset = upd.UpdateID + 1
@@ -271,21 +248,12 @@ func SendMessageToTG(text string) {
 	_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'tg_chat_id'").Scan(&chatID)
 	_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'tg_notify_enabled'").Scan(&enabled)
 
-	if enabled != "1" || token == "" || chatID == "" {
-		return
-	}
-
+	if enabled != "1" || token == "" || chatID == "" { return }
 	go func() {
 		url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
-		payload, _ := json.Marshal(map[string]interface{}{
-			"chat_id":    chatID,
-			"text":       text,
-			"parse_mode": "HTML",
-		})
+		payload, _ := json.Marshal(map[string]interface{}{"chat_id": chatID, "text": text, "parse_mode": "HTML"})
 		resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
-		if err == nil {
-			_ = resp.Body.Close()
-		}
+		if err == nil { resp.Body.Close() }
 	}()
 }
 
@@ -312,9 +280,7 @@ func runAcmeSubprocess(target string, isCron bool) {
 }
 
 func startCertCheckTimer(target string) {
-	go func() {
-		for range time.Tick(24 * time.Hour) { runAcmeSubprocess(target, true) }
-	}()
+	go func() { for range time.Tick(24 * time.Hour) { runAcmeSubprocess(target, true) } }()
 }
 
 func basicAuthWrapper(next http.HandlerFunc) http.HandlerFunc {
@@ -342,25 +308,20 @@ func HandleGetSystemConfig(w http.ResponseWriter, r *http.Request) {
 func HandleSaveSystemConfig(w http.ResponseWriter, r *http.Request) {
 	var req map[string]string
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	
 	var newToken string
 	for k, v := range req {
 		_, _ = DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)", k, v)
-		if k == "tg_bot_token" {
-			newToken = v
-		}
+		if k == "tg_bot_token" { newToken = v }
 	}
-
 	if newToken != "" {
 		StartTgBotEngine(newToken)
 		if req["tg_notify_enabled"] == "1" {
 			go func() {
 				time.Sleep(1 * time.Second)
-				SendMessageToTG("🤖 <b>大探长 OCI 控制台喜报</b>\n\n🎉 您的系统配置与 Telegram Bot 已成功测通！\n📡 后端常驻协程开始实时监听指令。\n\n💡 <b>目前可用指令：</b>\n<code>/status</code> - 查看实时开机状态\n<code>/2fa</code> - 获取即时登录码")
+				SendMessageToTG("🤖 <b>大探长 OCI 控制台喜报</b>\n\n🎉 您的系统配置与 Telegram Bot 已成功测通！")
 			}()
 		}
 	}
-
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"success"}`))
 }
