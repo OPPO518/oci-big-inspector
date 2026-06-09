@@ -24,7 +24,7 @@ func runAcmeSubprocess(target string) {
 		acmePath = "acme.sh"
 	}
 
-	// 参照 3x-ui 核心逻辑：使用 standalone 独立模式占用 80 端口验证，向 Let's Encrypt 申请短寿证书
+	// standalone 独立模式占用 80 端口验证，向 Let's Encrypt 申请短寿证书
 	cmd := exec.Command(acmePath, "--issue", "-d", target, "--standalone", "--server", "letsencrypt", "--insecure")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -48,14 +48,20 @@ func startCertCheckTimer(target string) {
 }
 
 func main() {
+	// 0. 优先初始化本地安全数据库
+	InitializeDB()
+
 	// 1. 解析嵌入的前端静态资源
-	publicFS, _ := fs.Sub(frontendFS, "dist")
+	publicFS, err := fs.Sub(frontendFS, "dist")
+	if err != nil {
+		log.Fatalf("❌ 无法加载内嵌前端: %v", err)
+	}
 	frontendHandler := http.FileServer(http.FS(publicFS))
 
 	// 2. 基础路由分发
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// 预留的 API 接口前缀
-		if filepath.HasPrefix(r.URL.Path, "/api/") {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
 			w.Header().Set("Content-Type", "application/json")
 			if r.URL.Path == "/api/status" {
 				fmt.Fprintf(w, `{"status":"running","engine":"Go-OCI-Core","cert":"LetsEncrypt-ShortLived"}`)
@@ -88,7 +94,7 @@ func main() {
 			runAcmeSubprocess(target)
 		}
 
-		// 启动后台高频续签轮询（适应 Let's Encrypt 6天 IP 证书）
+		// 启动后台高频续签轮询
 		startCertCheckTimer(target)
 
 		if _, err := os.Stat(certFile); err == nil {
