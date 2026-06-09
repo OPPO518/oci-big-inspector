@@ -3,8 +3,14 @@
 # ==========================================
 FROM node:20-alpine AS frontend-builder
 WORKDIR /frontend
-# 【占位逻辑】在后续实际开发前端前，先生成一个干净的 dist 目录防止 Go 编译报错
-RUN mkdir dist && echo "<h1>大探长 3x-ui 增强版控制台</h1><p>全容器化闭环、支持纯 IP 自动证书。</p>" > dist/index.html
+
+# 复制前端配置文件并安装依赖
+COPY ./frontend/package*.json ./
+RUN npm install
+
+# 复制所有前端源码并打包出 dist 目录
+COPY ./frontend .
+RUN npm run build
 
 # ==========================================
 # 阶段二：在 Go 环境中将前端资产静态嵌入并编译
