@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"embed"
-	"json"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
