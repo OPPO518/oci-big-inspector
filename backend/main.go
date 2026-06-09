@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"embed"
 	"fmt"
 	"io"
@@ -30,25 +31,53 @@ func getPublicIP() string {
 	return ""
 }
 
-func runAcmeSubprocess(target string) {
+func runAcmeSubprocess(target string, isCron bool) {
 	if target == "" {
 		return
 	}
+	
 	acmePath := "/root/.acme.sh/acme.sh"
 	if _, err := os.Stat(acmePath); os.IsNotExist(err) {
 		acmePath = "acme.sh"
 	}
-	cmd := exec.Command(acmePath, "--issue", "-d", target, "--standalone", "--server", "letsencrypt", "--insecure")
+
+	var cmd *exec.Cmd
+	if isCron {
+		log.Println("🔄 [ACME] 触发定时巡检，acme.sh 智能检测短寿证书是否需要续签...")
+		// 使用 acme.sh 原生的 cron 指令，安全且智能
+		cmd = exec.Command(acmePath, "--cron")
+	} else {
+		log.Printf("📢 [ACME] 开始为 IP [%s] 申请 Let's Encrypt 6天短寿证书...", target)
+		certDir := "/app/data/certs"
+		_ = os.MkdirAll(certDir, 0755)
+		certFile := filepath.Join(certDir, target+".cer")
+		keyFile := filepath.Join(certDir, target+".key")
+
+		// 【核心修复】增加 --certificate-profile shortlived 满足 Let's Encrypt 强制要求
+		// 增加 --fullchain-file 和 --key-file 将生成的证书物理导出到我们的挂载目录
+		cmd = exec.Command(acmePath, "--issue", "-d", target, "--standalone", "--server", "letsencrypt", "--insecure", 
+			"--certificate-profile", "shortlived",
+			"--fullchain-file", certFile,
+			"--key-file", keyFile)
+	}
+
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	_ = cmd.Run()
+
+	if err := cmd.Run(); err != nil {
+		log.Printf("❌ [ACME] 进程执行异常: %v", err)
+		return
+	}
+	if !isCron {
+		log.Println("✅ [ACME] Let's Encrypt IP 短寿证书签发并导出成功！")
+	}
 }
 
 func startCertCheckTimer(target string) {
 	ticker := time.NewTicker(24 * time.Hour)
 	go func() {
 		for range ticker.C {
-			runAcmeSubprocess(target)
+			runAcmeSubprocess(target, true)
 		}
 	}()
 }
@@ -114,7 +143,6 @@ func main() {
 				HandleListAccounts(w, r)
 				return
 			}
-			// 【新增加的路由】指向刚才写好的测试联通函数
 			if r.URL.Path == "/api/accounts/test" {
 				HandleTestConnection(w, r)
 				return
@@ -136,19 +164,35 @@ func main() {
 		keyFile := filepath.Join(certDir, target+".key")
 
 		if _, err := os.Stat(certFile); os.IsNotExist(err) {
-			runAcmeSubprocess(target)
+			runAcmeSubprocess(target, false)
 		}
+		
 		startCertCheckTimer(target)
 
 		if _, err := os.Stat(certFile); err == nil {
 			log.Printf("🚀 大探长已自动捕获公网 IP [%s] 并加载证书，安全运行在 :%s 端口", target, port)
-			if err := http.ListenAndServeTLS(":"+port, certFile, keyFile, nil); err != nil {
+			
+			server := &http.Server{
+				Addr: ":" + port,
+				TLSConfig: &tls.Config{
+					// 【黑科技】每次有新浏览器连接时，动态从磁盘读取闭包，实现 6 天证书无感热重载
+					GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+						cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+						if err != nil {
+							return nil, err
+						}
+						return &cert, nil
+					},
+				},
+			}
+			
+			if err := server.ListenAndServeTLS("", ""); err != nil {
 				log.Fatalf("❌ HTTPS 绑定失败: %v", err)
 			}
 		}
 	}
 
-	log.Printf("⚠️ 未能捕获公网 IP 或证书未就绪，降级至 HTTP 模式，端口 :%s", port)
+	log.Printf("⚠️ 未能捕获有效公网证书，降级至 HTTP 模式，端口 :%s", port)
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("❌ HTTP 绑定失败: %v", err)
 	}
