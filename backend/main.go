@@ -68,9 +68,13 @@ func main() {
 			server := &http.Server{
 				Addr: ":443",
 				TLSConfig: &tls.Config{
-					GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-						return tls.LoadX509KeyPair(certFile, keyFile)
-					},
+                    GetCertificate: func(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+                        cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+                        if err != nil {
+                            return nil, err
+                        }
+                        return &cert, nil // 👈 显式返回指针
+                    },
 				},
 			}
 			log.Fatal(server.ListenAndServeTLS("", ""))
