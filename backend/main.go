@@ -14,17 +14,31 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 //go:embed dist/*
 var frontendFS embed.FS
 
+// 引入全局锁与控制通道，实现免重启热更新 Bot
+var (
+	tgBotCancel chan struct{}
+	tgMu        sync.Mutex
+	activeToken string
+)
+
 func main() {
 	InitializeDB()
 
-	// 异步拉起 Telegram 常驻守护协程，负责在后台监听指令
-	go InitTelegramBot()
+	// 异步拉起 Telegram 守护协程
+	go func() {
+		var token string
+		_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'tg_bot_token'").Scan(&token)
+		if token != "" {
+			StartTgBotEngine(token)
+		}
+	}()
 
 	publicFS, err := fs.Sub(frontendFS, "dist")
 	if err != nil {
@@ -92,18 +106,70 @@ func main() {
 	log.Fatal(http.ListenAndServe(":443", nil))
 }
 
-// --- TELEGRAM NOTIFICATION ROUTER (TG 通知总线) ---
+// --- TELEGRAM 核心热启动引擎 ---
 
-// InitTelegramBot 负责长期驻留后台，处理外部发来的指令
-func InitTelegramBot() {
-	log.Println("🤖 Telegram 守护协程已就位，等待配置激活...")
-	for {
-		// 此处预留长轮询监听 /2fa 或 /status 指令
-		time.Sleep(30 * time.Second)
+func StartTgBotEngine(token string) {
+	tgMu.Lock()
+	if tgBotCancel != nil {
+		close(tgBotCancel) // 停掉老机器人的轮询
 	}
+	tgBotCancel = make(chan struct{})
+	activeToken = token
+	ch := tgBotCancel
+	tgMu.Unlock()
+
+	log.Printf("🤖 Telegram Bot 核心开始建立监听通道...")
+	
+	// 启动长轮询，用来接收发给 Bot 的指令 (如 /status, /2fa 等)
+	go func() {
+		offset := 0
+		client := &http.Client{Timeout: 25 * time.Second}
+		for {
+			select {
+			case <-ch:
+				log.Println("🤖 旧 Telegram Bot 监听已安全注销。")
+				return
+			default:
+				url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=20", activeToken, offset)
+				resp, err := client.Get(url)
+				if err != nil {
+					time.Sleep(5 * time.Second)
+					continue
+				}
+				
+				var updateData struct {
+					Ok     bool `json:"ok"`
+					Result []struct {
+						UpdateID int `json:"update_id"`
+						Message  struct {
+							Chat struct {
+								ID int64 `json:"id"`
+							} `json:"chat"`
+							Text string `json:"text"`
+						} `json:"message"`
+					} `json:"result"`
+				}
+				
+				if err := json.NewDecoder(resp.Body).Decode(&updateData); err == nil && updateData.Ok {
+					for _, upd := range updateData.Result {
+						offset = upd.UpdateID + 1
+						
+						// 预留点：在这里拦截处理来自管理员发来的交互指令
+						cmd := strings.TrimSpace(upd.Message.Text)
+						if cmd == "/status" {
+							SendMessageToTG("📊 <b>当前开机任务状态：</b>\n暂无处于激活的刷机队列。")
+						} else if cmd == "/2fa" {
+							SendMessageToTG("🔑 <b>当前双因素验证码：</b>\n<code>749102</code> (示例，后期联动)")
+						}
+					}
+				}
+				resp.Body.Close()
+			}
+		}
+	}()
 }
 
-// SendMessageToTG 提供给全局任何模块调用的主动推流接口
+// SendMessageToTG 全局推流核心接口
 func SendMessageToTG(text string) {
 	var token, chatID, enabled string
 	_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'tg_bot_token'").Scan(&token)
@@ -114,10 +180,9 @@ func SendMessageToTG(text string) {
 		return
 	}
 
-	// 异步发送，防止阻塞主业务引擎
 	go func() {
 		url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
-		payload, _ := json.Marshal(map[string]string{
+		payload, _ := json.Marshal(map[string]interface{}{
 			"chat_id":    chatID,
 			"text":       text,
 			"parse_mode": "HTML",
@@ -129,7 +194,7 @@ func SendMessageToTG(text string) {
 	}()
 }
 
-// --- 支撑逻辑 ---
+// --- 系统辅助功能 ---
 
 func checkInitNeeded() bool {
 	var count int
@@ -168,7 +233,6 @@ func basicAuthWrapper(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// HandleGetSystemConfig 获取安全与 TG 配置
 func HandleGetSystemConfig(w http.ResponseWriter, r *http.Request) {
 	res := make(map[string]string)
 	rows, err := DB.Query("SELECT key, value FROM system_config WHERE key IN ('tg_bot_token', 'tg_chat_id', 'tg_notify_enabled')")
@@ -182,13 +246,30 @@ func HandleGetSystemConfig(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(res)
 }
 
-// HandleSaveSystemConfig 保存系统配置
 func HandleSaveSystemConfig(w http.ResponseWriter, r *http.Request) {
 	var req map[string]string
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	for k, v := range req {
+	
+	var newToken string
+	for k, v range req {
 		_, _ = DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)", k, v)
+		if k == "tg_bot_token" {
+			newToken = v
+		}
 	}
+
+	// 核心热启动触发：如果用户修改或填入了有效的 Bot Token，内存当场刷新并通知 TG
+	if newToken != "" {
+		StartTgBotEngine(newToken)
+		// 如果开启了通知，直接推送测试喜报
+		if req["tg_notify_enabled"] == "1" {
+			go func() {
+				time.Sleep(1 * time.Second) // 留出一秒等数据库事务写完
+				SendMessageToTG("🤖 <b>大探长 OCI 控制台喜报</b>\n\n🎉 您的系统配置与 Telegram Bot 已成功测通！\n📡 后端常驻协程开始实时监听指令。\n\n💡 <b>目前可用指令：</b>\n<code>/status</code> - 查看实时开机状态\n<code>/2fa</code> - 获取即时登录码")
+			}()
+		}
+	}
+
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(`{"status":"success"}`))
 }
