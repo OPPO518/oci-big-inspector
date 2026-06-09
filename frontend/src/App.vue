@@ -141,7 +141,7 @@
                   </svg>
                 </div>
                 <div class="details-list font-mono">
-                  <div class="item"><span class="lbl">操作系统:</span><span class="val">{{ monitorData.os_info }} (Linux Linux-12)</span></div>
+                  <div class="item"><span class="lbl">操作系统:</span><span class="val">{{ monitorData.os_info || 'Linux' }}</span></div>
                   <div class="item"><span class="lbl">系统架构:</span><span class="val text-success">{{ monitorData.arch_info }}</span></div>
                   <div class="item"><span class="lbl">运行时间:</span><span class="val text-primary">{{ monitorData.uptime }}</span></div>
                   <div class="item"><span class="lbl">核心线程:</span><span class="val">{{ monitorData.threads }} / {{ monitorData.processes }}</span></div>
@@ -167,7 +167,7 @@
           </div>
         </div>
 
-        <div v-slot v-if="currentTab === 'tenant'">
+        <div v-else-if="currentTab === 'tenant'">
           <header class="dash-header">
             <div class="logo-area"><i class="fa-solid fa-key" style="color: #38bdf8; margin-right: 10px; font-size: 20px;"></i><h2>租户管理</h2></div>
             <div class="search-bar"><input v-model="searchQuery" type="text" placeholder="输入自定义名称或主区域进行过滤..." /><button class="btn-search"><i class="fa-solid fa-magnifying-glass"></i></button></div>
@@ -207,7 +207,7 @@
           </div>
         </div>
 
-        <div v-slot v-else-if="currentTab === 'security'" class="placeholder-container card" style="text-align: left; max-width: 700px; padding: 40px;">
+        <div v-else-if="currentTab === 'security'" class="placeholder-container card" style="text-align: left; max-width: 700px; padding: 40px;">
           <h3><i class="fa-solid fa-user-shield text-primary"></i> 安全与 Telegram 通知配置</h3>
           <p class="text-muted" style="margin-bottom: 25px;">在此配置大探长系统的核心防护层，以及对接 Telegram 自动化实时通知总线。</p>
           <form @submit.prevent="saveTgConfig">
@@ -218,7 +218,7 @@
           </form>
         </div>
 
-        <div v-slot v-else class="placeholder-container card">
+        <div v-else class="placeholder-container card">
           <i class="fa-solid fa-boxes-stacked placeholder-icon"></i>
           <h3>「 核心模块：{{ currentTab.toUpperCase() }} 」已完成页面卡位</h3>
           <p class="text-muted">当前前端导航与样式架构已完美对齐 OCI-START 深色面板。</p>
@@ -272,7 +272,6 @@ const initForm = ref({ username: '', password: '' })
 const tgForm = ref({ tg_bot_token: '', tg_chat_id: '', tg_notify_enabled: '0' })
 const addForm = ref({ alias: '', tenancy_id: '', user_id: '', fingerprint: '', region: '', private_key: '', raw_config: '', account_type: '个人免费账号', is_multi_region: false, proxy: '直连' })
 
-// 时钟与轮询引擎
 const startTimers = () => {
   clockTimer = setInterval(() => {
     const d = new Date()
@@ -280,7 +279,7 @@ const startTimers = () => {
   }, 1000)
 
   fetchMonitorData()
-  monitorTimer = setInterval(fetchMonitorData, 5000) // 5 秒高频刷新
+  monitorTimer = setInterval(fetchMonitorData, 5000)
 }
 
 const fetchMonitorData = async () => {
@@ -404,7 +403,6 @@ body { background-color: #0b0f19; color: #cbd5e1; font-family: -apple-system, Bl
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
-/* 侧边栏整体骨架布局 */
 .app-layout { display: flex; min-height: 100vh; }
 .sidebar { width: 250px; background: #111827; border-right: 1px solid #1f2937; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; height: 100vh; z-index: 10; }
 .main-wrapper { flex: 1; margin-left: 250px; min-width: 0; display: flex; flex-direction: column; }
@@ -419,13 +417,11 @@ body { background-color: #0b0f19; color: #cbd5e1; font-family: -apple-system, Bl
 .menu-item.active { background: #1e293b; color: #38bdf8; font-weight: 600; }
 .menu-item.active i { color: #38bdf8; }
 
-/* 🚀 新增：监控看板专属样式引擎 */
 .monitor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; background: #111827; padding: 15px 20px; border-radius: 8px; border: 1px solid #1f2937; }
 .monitor-header .m-title { display: flex; align-items: center; gap: 10px; }
 .monitor-header .m-title h2 { margin: 0; font-size: 18px; color: #fff; }
 .realtime-clock { color: #10b981; font-size: 14px; font-weight: bold; background: #0b0f19; padding: 6px 14px; border-radius: 20px; border: 1px solid #1f2937; }
 
-/* 五宫格卡片 */
 .monitor-grid-top { display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 25px; }
 .m-card-mini { background: #111827; border: 1px solid #1f2937; padding: 15px; border-radius: 8px; display: flex; align-items: center; gap: 15px; }
 .mini-icon { width: 45px; height: 45px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
@@ -438,14 +434,12 @@ body { background-color: #0b0f19; color: #cbd5e1; font-family: -apple-system, Bl
 .mini-info .title { font-size: 12px; color: #9ca3af; }
 .mini-info .value { font-size: 20px; font-weight: 700; color: #fff; }
 
-/* 硬件卡片排版 */
 .monitor-grid-main { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 25px; }
 .m-box { background: #111827; border: 1px solid #1f2937; border-radius: 8px; padding: 20px; }
 .m-box-full { background: #111827; border: 1px solid #1f2937; border-radius: 8px; padding: 20px; margin-bottom: 25px; }
 .box-head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #fff; padding-bottom: 15px; border-bottom: 1px solid #1f2937; margin-bottom: 15px; }
 .split-layout { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
 
-/* SVG 高性能数据表盘 */
 .circle-chart { width: 100px; height: 100px; position: relative; }
 .circular-chart { display: block; max-height: 100px; }
 .circle-bg { stroke: #1f2937; stroke-width: 2.8; fill: none; }
@@ -456,20 +450,17 @@ body { background-color: #0b0f19; color: #cbd5e1; font-family: -apple-system, Bl
 .percentage { fill: #fff; font-size: 8px; text-anchor: middle; font-weight: bold; }
 .percentage.text-sm { font-size: 5px; fill: #9ca3af; }
 
-/* 硬件具体参数文本 */
 .details-list { flex: 1; display: flex; flex-direction: column; gap: 8px; font-size: 12px; }
 .details-list .item { display: flex; justify-content: space-between; border-bottom: 1px dashed #1f2937; padding-bottom: 4px; }
 .details-list .lbl { color: #64748b; }
 .details-list .val { color: #f8fafc; font-weight: 500; }
 .truncated { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; }
 
-/* 硬盘进度条专用 */
 .storage-bar-area { display: flex; flex-direction: column; gap: 10px; }
 .storage-info { display: flex; justify-content: space-between; font-size: 13px; color: #9ca3af; }
 .progress-container-bar { background: #1f2937; height: 10px; border-radius: 5px; overflow: hidden; }
 .progress-fill-bar { background: linear-gradient(90deg, #10b981, #34d399); height: 100%; width: 0; transition: width 0.5s ease; }
 
-/* 表格与弹窗基础类 (保持原样不动) */
 .dash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: #111827; padding: 12px 20px; border-radius: 8px; border: 1px solid #1f2937; }
 .logo-area { display: flex; align-items: center; }
 .logo-area h2 { margin: 0; font-size: 16px; color: #f8fafc; }
