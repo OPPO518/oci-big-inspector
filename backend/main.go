@@ -251,7 +251,7 @@ func HandleSaveSystemConfig(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	
 	var newToken string
-	for k, v range req {
+	for k, v := range req { // 👈 核心修复：在这里加上了 :=
 		_, _ = DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)", k, v)
 		if k == "tg_bot_token" {
 			newToken = v
