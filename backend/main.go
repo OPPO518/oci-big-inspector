@@ -25,7 +25,6 @@ func runAcmeSubprocess(target string) {
 		acmePath = "acme.sh"
 	}
 
-	// standalone 独立模式占用 80 端口验证，向 Let's Encrypt 申请短寿证书
 	cmd := exec.Command(acmePath, "--issue", "-d", target, "--standalone", "--server", "letsencrypt", "--insecure")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -37,7 +36,7 @@ func runAcmeSubprocess(target string) {
 	log.Println("✅ [ACME] Let's Encrypt IP/域名证书处理成功！")
 }
 
-// 后端守护进程：每 24 小时检查一次证书并自动续签
+// 定时任务：每 24 小时检查并自动续签证书
 func startCertCheckTimer(target string) {
 	ticker := time.NewTicker(24 * time.Hour)
 	go func() {
@@ -46,6 +45,37 @@ func startCertCheckTimer(target string) {
 			runAcmeSubprocess(target)
 		}
 	}()
+}
+
+// 【新增核心：安全守门员】HTTP 基础认证中间件
+func basicAuthWrapper(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// 从环境变量读取设定的管理员账号密码
+		expectedUser := os.Getenv("WEB_USERNAME")
+		expectedPass := os.Getenv("WEB_PASSWORD")
+
+		// 兜底防御：如果部署时忘了写环境变量，强制阻断访问，并在日志中警告
+		if expectedUser == "" || expectedPass == "" {
+			log.Println("⚠️ [安全警告] 未配置 WEB_USERNAME 或 WEB_PASSWORD 环境变量，系统已自动锁定拒绝所有访问！")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"服务器未配置安全凭证，拒绝访问"}`))
+			return
+		}
+
+		// 获取浏览器传来的认证信息
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != expectedUser || pass != expectedPass {
+			// 认证失败，向浏览器发送弹窗指令
+			w.Header().Set("WWW-Authenticate", `Basic realm="OCI Big Inspector Restrict"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"Unauthorized"}`))
+			return
+		}
+
+		// 认证成功，继续执行后续的网页或 API 逻辑
+		next(w, r)
+	}
 }
 
 func main() {
@@ -59,40 +89,32 @@ func main() {
 	}
 	frontendHandler := http.FileServer(http.FS(publicFS))
 
-	// 2. 基础路由分发 (API 与前端静态文件)
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// 如果网址是以 /api/ 开头的，说明是前后端交互的接口请求
+	// 2. 基础路由分发 (全部套上安全守门员 basicAuthWrapper)
+	http.HandleFunc("/", basicAuthWrapper(func(w http.ResponseWriter, r *http.Request) {
+		// API 路由分支
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			w.Header().Set("Content-Type", "application/json")
 			
-			// 规则 1：系统状态查询接口
 			if r.URL.Path == "/api/status" {
-				fmt.Fprintf(w, `{"status":"running","engine":"Go-OCI-Core","cert":"LetsEncrypt-ShortLived"}`)
+				fmt.Fprintf(w, `{"status":"running","engine":"Go-OCI-Core","cert":"LetsEncrypt"}`)
 				return
 			}
-			
-			// 规则 2：【新加的内容】动态添加甲骨文账户的接口
-			// 当网页发送请求到 /api/accounts/add 时，直接交给 handlers.go 里的函数处理
 			if r.URL.Path == "/api/accounts/add" {
 				HandleAddAccount(w, r)
 				return
 			}
 			
-			// 如果 /api/ 后面跟了不认识的网址，返回 404
 			http.Error(w, `{"error":"Not Found"}`, http.StatusNotFound)
 			return
 		}
 		
-		// 如果访问的不是 /api/，说明用户是在浏览器里看网页，直接展示内嵌的 Vue 3 前端页面
+		// 静态前端资源页面
 		frontendHandler.ServeHTTP(w, r)
-	})
+	}))
 
 	// 3. 读取核心环境变量
 	target := os.Getenv("SERVER_TARGET") // VPS 纯公网 IP 或域名
-	port := os.Getenv("WEB_PORT")
-	if port == "" {
-		port = "443"
-	}
+	port := "443"                        // 容器内部始终固定监听标准的 443 HTTPS 端口
 
 	// 4. 安全启动判定
 	if target != "" {
@@ -102,7 +124,7 @@ func main() {
 		certFile := filepath.Join(certDir, target+".cer")
 		keyFile := filepath.Join(certDir, target+".key")
 
-		// 首次启动：如果没有证书，立刻执行一次申请
+		// 首次启动若无证书则去申请
 		if _, err := os.Stat(certFile); os.IsNotExist(err) {
 			runAcmeSubprocess(target)
 		}
@@ -111,7 +133,7 @@ func main() {
 		startCertCheckTimer(target)
 
 		if _, err := os.Stat(certFile); err == nil {
-			log.Printf("🚀 大探长已成功加载 Let's Encrypt 证书，安全运行在 https://%s:%s", target, port)
+			log.Printf("🚀 大探长已成功加载 Let's Encrypt 证书，安全运行在容器内 :%s 端口", port)
 			if err := http.ListenAndServeTLS(":"+port, certFile, keyFile, nil); err != nil {
 				log.Fatalf("❌ HTTPS 绑定失败: %v", err)
 			}
