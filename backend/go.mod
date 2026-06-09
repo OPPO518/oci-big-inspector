@@ -2,7 +2,10 @@ module oci-big-inspector
 
 go 1.22
 
-require github.com/glebarez/go-sqlite v1.22.0
+require (
+	github.com/glebarez/go-sqlite v1.22.0
+	github.com/oracle/oci-go-sdk/v65 v65.63.0
+)
 
 require (
 	github.com/google/uuid v1.3.0 // indirect
