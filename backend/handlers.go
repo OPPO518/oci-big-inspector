@@ -6,7 +6,6 @@ import (
 	"net/http"
 )
 
-// AddAccountRequest 定义前端传过来的添加账户结构
 type AddAccountRequest struct {
 	Alias       string `json:"alias"`
 	TenancyID   string `json:"tenancy_id"`
@@ -16,13 +15,11 @@ type AddAccountRequest struct {
 	PrivateKey  string `json:"private_key"`
 }
 
-// SysInitRequest 定义系统首次初始化请求体
 type SysInitRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-// AccountConfigResponse 用于安全地返回给前端账号列表（绝不暴露加密后的私钥字段）
 type AccountConfigResponse struct {
 	ID          int    `json:"id"`
 	Alias       string `json:"alias"`
@@ -31,7 +28,12 @@ type AccountConfigResponse struct {
 	Fingerprint string `json:"fingerprint"`
 }
 
-// HandleSystemInit 处理系统首次在网页上输入账号密码初始化 (POST /api/system/init)
+// 定义测试连接的请求体
+type TestAccountRequest struct {
+	ID int `json:"id"`
+}
+
+// 处理系统首次初始化 (POST /api/system/init)
 func HandleSystemInit(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
@@ -39,7 +41,6 @@ func HandleSystemInit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 安全检查：如果数据库里已经有账号了，直接拒绝，防止被二次恶意初始化
 	var count int
 	_ = DB.QueryRow("SELECT COUNT(*) FROM system_config WHERE key = 'username'").Scan(&count)
 	if count > 0 {
@@ -55,7 +56,6 @@ func HandleSystemInit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 将管理员账号密码写入系统配置表
 	_, err := DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES ('username', ?), ('password', ?)", req.Username, req.Password)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -64,10 +64,10 @@ func HandleSystemInit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"success","message":"面板初始化成功，请刷新页面登录"}`))
+	_, _ = w.Write([]byte(`{"status":"success","message":"面板初始化成功"}`))
 }
 
-// HandleAddAccount 处理添加账户的 API 请求 (POST /api/accounts/add)
+// 处理添加账户 (POST /api/accounts/add)
 func HandleAddAccount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodPost {
@@ -82,7 +82,6 @@ func HandleAddAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 调用 crypto.go 高强度加密私钥
 	encryptedKey, err := EncryptText(req.PrivateKey)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -93,7 +92,6 @@ func HandleAddAccount(w http.ResponseWriter, r *http.Request) {
 	_, err = DB.Exec(query, req.Alias, req.TenancyID, req.UserID, req.Fingerprint, req.Region, encryptedKey)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("❌ 数据库写入失败: %v", err)
 		return
 	}
 
@@ -101,7 +99,7 @@ func HandleAddAccount(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"success","message":"账户添加成功"}`))
 }
 
-// HandleListAccounts 让前端在表格里渲染已绑定的甲骨文账号 (GET /api/accounts/list)
+// 查询列表 (GET /api/accounts/list)
 func HandleListAccounts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != http.MethodGet {
@@ -125,4 +123,36 @@ func HandleListAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(list)
+}
+
+// 【新增模块】处理测试连通性请求 (POST /api/accounts/test)
+func HandleTestConnection(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req TestAccountRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ID == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"非法的请求参数"}`))
+		return
+	}
+
+	// 呼叫底层的 OCI SDK 桥接模块
+	tenantName, err := TestOCILink(req.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		// 将错误信息转化为 JSON 返回给前端弹窗
+		json.NewEncoder(w).Encode(map[string]string{"error": "连接失败: " + err.Error()})
+		return
+	}
+
+	// 如果成功，返回甲骨文那边的真实租户名
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":      "success",
+		"tenant_name": tenantName,
+	})
 }
