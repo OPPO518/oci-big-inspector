@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -58,19 +59,31 @@ func main() {
 	}
 	frontendHandler := http.FileServer(http.FS(publicFS))
 
-	// 2. 基础路由分发
+	// 2. 基础路由分发 (API 与前端静态文件)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// 预留的 API 接口前缀
+		// 如果网址是以 /api/ 开头的，说明是前后端交互的接口请求
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			w.Header().Set("Content-Type", "application/json")
+			
+			// 规则 1：系统状态查询接口
 			if r.URL.Path == "/api/status" {
 				fmt.Fprintf(w, `{"status":"running","engine":"Go-OCI-Core","cert":"LetsEncrypt-ShortLived"}`)
 				return
 			}
+			
+			// 规则 2：【新加的内容】动态添加甲骨文账户的接口
+			// 当网页发送请求到 /api/accounts/add 时，直接交给 handlers.go 里的函数处理
+			if r.URL.Path == "/api/accounts/add" {
+				HandleAddAccount(w, r)
+				return
+			}
+			
+			// 如果 /api/ 后面跟了不认识的网址，返回 404
 			http.Error(w, `{"error":"Not Found"}`, http.StatusNotFound)
 			return
 		}
-		// 静态前端资源
+		
+		// 如果访问的不是 /api/，说明用户是在浏览器里看网页，直接展示内嵌的 Vue 3 前端页面
 		frontendHandler.ServeHTTP(w, r)
 	})
 
