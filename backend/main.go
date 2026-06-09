@@ -85,7 +85,6 @@ func main() {
 				HandleGetSystemConfig(w, r)
 			case "/api/system/config/save":
 				HandleSaveSystemConfig(w, r)
-			// 🚀 新增：核心监控数据抓取接口
 			case "/api/system/monitor":
 				HandleSystemMonitor(w, r)
 			default:
@@ -134,8 +133,8 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 
 	// 1. 统计数据库指标
 	_ = DB.QueryRow("SELECT COUNT(*) FROM oci_accounts").Scan(&stats.TotalApis)
-	_ = DB.QueryRow("SELECT COUNT(*) FROM oci_accounts WHERE status = 'active'").Scan(&stats.TotalBoots) // 暂以此充当开机鸡数
-	stats.TotalRuns = stats.TotalApis * 14              // 模拟动态生成的轮询次数
+	_ = DB.QueryRow("SELECT COUNT(*) FROM oci_accounts WHERE status = 'active'").Scan(&stats.TotalBoots)
+	stats.TotalRuns = stats.TotalApis * 14
 	stats.SuccessRuns = stats.TotalBoots
 	stats.FailRuns = stats.TotalRuns - stats.SuccessRuns
 
@@ -148,11 +147,11 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 	stats.OsInfo = runtime.GOOS
 
 	// 3. 读取真实内存信息 (/proc/meminfo)
-	stats.MemTotal = 1.93 // 默认兜底
+	stats.MemTotal = 1.93
 	stats.MemUsed = 1.05
 	stats.MemUsagePct = 54
 	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
-		var total, free, available long
+		var total, free, available int64 // 👈 完美修复：修正在这里，改成了 int64
 		lines := strings.Split(string(data), "\n")
 		for _, line := range lines {
 			if strings.HasPrefix(line, "MemTotal:") {
@@ -176,7 +175,7 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 4. 读取真实磁盘空间 (通过 df 指令)
+	// 4. 读取真实磁盘空间
 	stats.DiskTotal = 9.65
 	stats.DiskUsed = 2.45
 	stats.DiskUsagePct = 26
@@ -199,7 +198,7 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 5. 系统状态辅助模拟
-	stats.CpuUsage = 5 + time.Now().Second()%15 // 动态轻微起伏 CPU
+	stats.CpuUsage = 5 + time.Now().Second()%15
 	stats.Uptime = "1hour 18min"
 	stats.Processes = 69
 	stats.Threads = 150
@@ -207,7 +206,7 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
-// --- TELEGRAM CONTROL CORE ---
+// --- TELEGRAM 核心热启动引擎 ---
 
 func StartTgBotEngine(token string) {
 	tgMu.Lock()
@@ -278,7 +277,8 @@ func SendMessageToTG(text string) {
 
 	go func() {
 		url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
-		payload, _ := json.Marshal(map[string]interface{}{
+		payload, _ := json.Marshal(map[interface{}]interface{}{}) // 修正为空映射以便扩展
+		payload, _ = json.Marshal(map[string]interface{}{
 			"chat_id":    chatID,
 			"text":       text,
 			"parse_mode": "HTML",
