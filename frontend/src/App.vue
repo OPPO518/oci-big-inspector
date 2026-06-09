@@ -55,7 +55,7 @@
         </div>
       </div>
 
-      <main v-else class="main-content fade-in">
+      <main class="main-content fade-in">
         
         <div v-if="currentTab === 'monitor'">
           <div class="monitor-header">
@@ -102,9 +102,9 @@
                   </svg>
                 </div>
                 <div class="details-list font-mono">
-                  <div class="item"><span class="lbl">总内存:</span><span class="val">{{ monitorData.mem_total ? monitorData.mem_total.toFixed(2) : 1.93 }} GB</span></div>
-                  <div class="item"><span class="lbl">已用内存:</span><span class="val--------------">{{ monitorData.mem_used ? monitorData.mem_used.toFixed(2) : 1.05 }} GB</span></div>
-                  <div class="item"><span class="lbl">可用内存:</span><span class="val">{{ monitorData.mem_total ? (monitorData.mem_total - monitorData.mem_used).toFixed(2) : 0.88 }} GB</span></div>
+                  <div class="item"><span class="lbl">总内存:</span><span class="val">{{ monitorData.mem_total ? monitorData.mem_total.toFixed(2) : 3.83 }} GB</span></div>
+                  <div class="item"><span class="lbl">已用内存:</span><span class="val">{{ monitorData.mem_used ? monitorData.mem_used.toFixed(2) : 0.57 }} GB</span></div>
+                  <div class="item"><span class="lbl">可用内存:</span><span class="val">{{ monitorData.mem_total ? (monitorData.mem_total - monitorData.mem_used).toFixed(2) : 3.26 }} GB</span></div>
                   <div class="item"><span class="lbl">交换空间:</span><span class="val">0MB / 0MB</span></div>
                 </div>
               </div>
@@ -122,7 +122,7 @@
                 </div>
                 <div class="details-list font-mono">
                   <div class="item"><span class="lbl">操作系统:</span><span class="val">{{ monitorData.os_info || 'Linux' }}</span></div>
-                  <div class="item"><span class="lbl">系统架构:</span><span class="val text-success">{{ monitorData.arch_info }}</span></div>
+                  <div class="item"><span class="lbl">系统架构:</span><span class="val text-success">{{ monitorData.arch_info || 'amd64' }}</span></div>
                   <div class="item"><span class="lbl">运行时间:</span><span class="val text-primary">{{ monitorData.uptime }}</span></div>
                   <div class="item"><span class="lbl">核心线程:</span><span class="val">{{ monitorData.threads }} / {{ monitorData.processes }}</span></div>
                 </div>
@@ -136,7 +136,7 @@
               <div class="storage-bar-area font-mono">
                 <div class="storage-info">
                   <span>挂载路径：<b>/app/data (SQLite 数据落盘池)</b></span>
-                  <span>已用：{{ monitorData.disk_used ? monitorData.disk_used.toFixed(2) : 2.45 }} GB / 总容量：{{ monitorData.disk_total ? monitorData.disk_total.toFixed(2) : 9.65 }} GB</span>
+                  <span>已用：{{ monitorData.disk_used ? monitorData.disk_used.toFixed(2) : 5.52 }} GB / 总容量：{{ monitorData.disk_total ? monitorData.disk_total.toFixed(2) : 9.65 }} GB</span>
                 </div>
                 <div class="progress-container-bar"><div class="progress-fill-bar" :style="{ width: monitorData.disk_usage_pct + '%' }"></div></div>
                 <div style="text-align: right; font-size: 11px; margin-top: 5px; color: #10b981;">已用空间占比：{{ monitorData.disk_usage_pct }}%</div>
@@ -177,9 +177,9 @@
                 <tr v-if="filteredAccounts.length === 0"><td colspan="12" class="text-center" style="padding: 40px; color: #4b5563;">暂无匹配的租户凭证</td></tr>
                 <tr v-for="(acc, index) in filteredAccounts" :key="acc.id">
                   <td class="text-muted font-mono">{{ index + 1 }}</td>
-                  <td class="font-bold text-primary link-style" @click="viewDetails(acc)">{{ acc.alias }}</td>
+                  <td class="font-bold text-primary link-style">{{ acc.alias }}</td>
                   <td><span class="badge badge-neutral font-mono">{{ acc.tenant_name }}</span></td>
-                  <td><span class="badge badge-info">{{ acc.account_type }}</span></td>
+                  <td><span class="badge badge-info">{{ acc.account_type || '未探测' }}</span></td>
                   <td class="text-primary font-bold">{{ acc.region }}</td>
                   <td>
                     <span v-if="acc.is_multi_region" class="badge badge-success">● Yes</span>
@@ -193,7 +193,10 @@
                   </td>
                   <td><span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> 有效</span></td>
                   <td class="font-mono text-sm code-font">{{ acc.proxy }}</td>
-                  <td class="action-cell"><button class="btn-create-spec" @click="fastCreate(acc)"><i class="fa-solid fa-rocket"></i> 创建实例</button></td>
+                  <td class="action-cell">
+                    <button class="btn-create-spec" @click="fastCreate(acc)"><i class="fa-solid fa-rocket"></i> 创建实例</button>
+                    <button class="btn-delete-spec" @click="deleteAccount(acc)" title="彻底删除凭证"><i class="fa-solid fa-trash-can"></i> 删除</button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -210,7 +213,7 @@
           </form>
         </div>
 
-        <div v-else class="placeholder-container card">
+        <div class="placeholder-container card" v-else>
           <i class="fa-solid fa-boxes-stacked placeholder-icon"></i>
           <h3>「 核心模块：{{ currentTab.toUpperCase() }} 」已完成页面卡位</h3>
         </div>
@@ -220,23 +223,19 @@
         <div class="modal-content fade-in-up">
           <h3><i class="fa-solid fa-bolt" style="color:#22c55e;"></i> API 凭证自动化纳管</h3>
           <p class="text-sm text-muted" style="margin-bottom: 20px;">无需手动勾选，填入生存要素，系统会自动通过甲骨文探针同步其账号身份与注册时间。</p>
-          
           <form @submit.prevent="submitAddAccount">
             <div class="form-group">
               <label>1. 粘贴 OCI 原始凭证 (Config)</label>
               <textarea v-model="addForm.raw_config" rows="4" class="code-input" placeholder="粘贴官方生成的 [DEFAULT] 配置文本..."></textarea>
             </div>
-            
             <div class="form-group">
               <label>2. 自定义名称（唯一必填手工项）</label>
               <input v-model="addForm.alias" type="text" required placeholder="如：墨西哥蒙特雷A、compta主号" />
             </div>
-
             <div class="form-group">
               <label>3. 专属代理网络（防关联隔离，直连请保持默认）</label>
               <input v-model="addForm.proxy" type="text" placeholder="IP:PORT，直连则写 '直连'" />
             </div>
-
             <div class="form-group">
               <label>4. 密钥文件 (.pem / 文本粘贴皆可)</label>
               <div class="file-upload-wrapper">
@@ -246,7 +245,6 @@
               </div>
               <textarea v-model="addForm.private_key" rows="3" placeholder="或者直接在此粘贴 API Private Key 文本内容..." style="margin-top:10px; font-family: monospace;"></textarea>
             </div>
-            
             <div class="modal-actions">
               <button type="button" class="btn btn-export" @click="showModal = false">取消</button>
               <button type="submit" :disabled="submitting" class="btn btn-api">立即存盘并触发自动体征探测</button>
@@ -292,37 +290,60 @@ const fetchMonitorData = async () => {
   } catch (e) { console.error(e) }
 }
 
+const runSingleAccountTest = async (acc) => {
+  const originalName = acc.tenant_name
+  acc.tenant_name = '探测同步中...'
+  try {
+    const testRes = await axios.post('/api/accounts/test', { id: acc.id })
+    if (testRes.data && testRes.data.status === 'success') {
+      acc.tenant_name = testRes.data.tenant_name
+      acc.created_at = testRes.data.created_at
+      acc.account_type = testRes.data.account_type
+      acc.is_multi_region = testRes.data.is_multi_region
+      
+      if (acc.created_at) {
+        const t = new Date(acc.created_at.replace(' ', 'T'))
+        const diff = Math.floor((new Date() - t) / (1000 * 60 * 60 * 24))
+        acc.alive_days = diff <= 0 ? 1 : diff
+      }
+    } else { acc.tenant_name = originalName }
+  } catch (err) { acc.tenant_name = '认证失败' }
+}
+
 const fetchAccounts = async () => {
   try {
     const res = await axios.get('/api/accounts/list')
     accounts.value = res.data || []
-    
     accounts.value.forEach(async (acc) => {
       if (!acc.tenant_name || acc.tenant_name === '获取中...') {
-        try {
-          const testRes = await axios.post('/api/accounts/test', { id: acc.id })
-          if (testRes.data && testRes.data.status === 'success') {
-            acc.tenant_name = testRes.data.tenant_name
-            acc.created_at = testRes.data.created_at
-            acc.account_type = testRes.data.account_type
-            acc.is_multi_region = testRes.data.is_multi_region
-            
-            if (acc.created_at) {
-              const t = new Date(acc.created_at.replace(' ', 'T'))
-              const diff = Math.floor((new Date() - t) / (1000 * 60 * 60 * 24))
-              acc.alive_days = diff <= 0 ? 1 : diff
-            }
-          }
-        } catch (err) { acc.tenant_name = '认证失败' }
+        await runSingleAccountTest(acc)
       } else {
-		if (acc.created_at) {
-		  const t = new Date(acc.created_at.replace(' ', 'T'))
-		  const diff = Math.floor((new Date() - t) / (1000 * 60 * 60 * 24))
-		  acc.alive_days = diff <= 0 ? 1 : diff
-		}
-	  }
+        if (acc.created_at && acc.created_at !== '获取中') {
+          const t = new Date(acc.created_at.replace(' ', 'T'))
+          const diff = Math.floor((new Date() - t) / (1000 * 60 * 60 * 24))
+          acc.alive_days = diff <= 0 ? 1 : diff
+        }
+      }
     })
   } catch(e) { console.error(e) }
+}
+
+const batchTest = async () => {
+  if (accounts.value.length === 0) return
+  alert('🚀 正在拉起官方体征强刷引擎！无视所有本地缓存，强制同步最新的官方生存天数与注册日期...')
+  for (const acc of accounts.value) { await runSingleAccountTest(acc) }
+  alert('🎉 所有账号官方体征盘点清洗完成！')
+}
+
+// 🚀 新增：前端一键安全截断销户方法
+const deleteAccount = async (acc) => {
+  if (!confirm(`⚠️ 警告：确定要彻底删除租户凭证 [${acc.alias}] 吗？\n\n此操作会完全切断后台与甲骨文服务器的所有自动连接，删除后将无法恢复！`)) return
+  try {
+    const res = await axios.post('/api/accounts/delete', { id: acc.id })
+    if (res.data && res.data.status === 'success') {
+      fetchAccounts() // 立即重新洗牌刷新主表格
+    }
+  } catch (e) { alert('删除失败，请检查网络响应') }
 }
 
 watch(currentTab, (newTab) => {
@@ -405,10 +426,12 @@ const submitAddAccount = async () => {
   finally { submitting.value = false }
 }
 
-const batchTest = () => { alert('多租户官方体征全网探测同步中...'); fetchAccounts() }
 const fastCreate = (acc) => { alert(`正在调取 [${acc.alias}] 执行快速挂载与开机向导...`) }
 const viewDetails = (acc) => { alert(`打开账户 [${acc.alias}] 的配置详情页`) }
-const formatTime = (t) => t ? (t.includes('T') ? t.substring(0,10) : t.substring(0, 10)) : '获取中'
+const formatTime = (t) => {
+  if (!t || t === '获取中') return '获取中'
+  return t.substring(0, 10)
+}
 
 onMounted(() => checkSystemStatus())
 onBeforeUnmount(() => { clearInterval(clockTimer); clearInterval(monitorTimer) })
@@ -496,6 +519,10 @@ tr:hover { background: #161e2e; }
 .btn-api { background: #10b981; color: white; } .btn-export { background: #1f2937; color: #9ca3af; border: 1px solid #374151; } .btn-check { background: #2563eb; color: white; }
 .btn-icon { padding: 8px 12px; background: #1e293b; color: #cbd5e1; border: none; border-radius: 6px; cursor: pointer; }
 .btn-create-spec { background: #f59e0b; color: #000; font-weight: 700; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 8px; }
+/* 红色强力卸载按钮样式 */
+.btn-delete-spec { background: #ef4444; color: #fff; font-weight: 600; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
+.btn-delete-spec:hover { background: #dc2626; }
+
 .badge { padding: 3px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
 .badge-info { background: rgba(56,189,248,0.1); color: #38bdf8; } .badge-success { background: rgba(16,185,129,0.1); color: #10b981; } .badge-danger { background: rgba(239,68,68,0.1); color: #ef4444; } .badge-neutral { background: #1f2937; color: #9ca3af; border: 1px solid #374151; }
 .code-font { background: #1f2937; padding: 2px 6px; border-radius: 4px; color: #e2e8f0; }
