@@ -6,15 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
-	_ "github.com/glebarez/go-sqlite" // 注册纯 Go 版本的 sqlite 驱动
+	_ "github.com/glebarez/go-sqlite"
 )
 
 var DB *sql.DB
 
-// InitializeDB 初始化 SQLite 数据库及数据表
 func InitializeDB() {
 	dbDir := "/app/data"
-	// 如果是本地调试发现没有这个目录，自动降级创建当前目录下的 data
 	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
 		dbDir = "./data"
 	}
@@ -29,22 +27,29 @@ func InitializeDB() {
 		log.Fatalf("❌ 数据库打开失败: %v", err)
 	}
 
-	// 创建账户凭证表 (存储加密后的私钥)
+	// 1. 创建系统配置表（存放 Web 界面初始化的账号密码）
+	createConfigTable := `
+	CREATE TABLE IF NOT EXISTS system_config (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);`
+	_, _ = DB.Exec(createConfigTable)
+
+	// 2. 创建账户凭证表保持不变
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS oci_accounts (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		alias TEXT NOT NULL,              -- 账号别名 (如: 东平主号)
-		tenancy_id TEXT NOT NULL,         -- 租户 OCID
-		user_id TEXT NOT NULL,            -- 用户 OCID
-		fingerprint TEXT NOT NULL,        -- API 密钥指纹
-		region TEXT NOT NULL,             -- 默认主区域
-		encrypted_key TEXT NOT NULL,      -- AES 加密后的 Private Key 全文
+		alias TEXT NOT NULL,
+		tenancy_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		fingerprint TEXT NOT NULL,
+		region TEXT NOT NULL,
+		encrypted_key TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
-
 	_, err = DB.Exec(createTableSQL)
 	if err != nil {
 		log.Fatalf("❌ 数据表创建失败: %v", err)
 	}
-	log.Println("✅ [数据库] 密文数据表初始化/检查完成。")
+	log.Println("✅ [数据库] 所有数据表初始化检查完成。")
 }
