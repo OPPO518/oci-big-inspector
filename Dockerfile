@@ -17,33 +17,36 @@ RUN npm run build
 # ==========================================
 FROM golang:1.22-alpine AS backend-builder
 WORKDIR /app
-COPY ./backend/go.mod ./
-# 如果后续引入了第三方包，在这里取消注释
-# RUN go mod download
 
-COPY ./backend/main.go .
+# 【修复点 1】把 backend 目录下所有的 .go 和 .mod 文件全部复制进来
+COPY ./backend ./
+
+# 【修复点 2】让 Go 自动下载 SQLite 驱动和甲骨文 SDK 等所有依赖
+RUN go mod tidy
+
+# 从前端阶段复制编译好的 dist 目录到 Go 的上下文中
 COPY --from=frontend-builder /frontend/dist ./dist
 
-# 纯静态编译，彻底剥离 CGO 依赖，极致压榨体积
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o big-inspector main.go
+# 【修复点 3】将结尾的 main.go 改成 . ，表示把当前目录下的所有 Go 文件联合编译
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o big-inspector .
 
 # ==========================================
-# 阶段三：最终产线运行环境（单容器完全体）
+# 阶段三：最终极简运行环境（只有这一个容器投产）
 # ==========================================
 FROM alpine:3.19
-# 安装 acme.sh 运行和验证所需的系统组件
+# 安装 acme.sh 运行必备的系统工具
 RUN apk add --no-cache ca-certificates curl openssl socat bash
 
 WORKDIR /app
 
-# 从第二阶段偷走最终的单文件二进制程序
+# 把最终的单文件二进制偷过来
 COPY --from=backend-builder /app/big-inspector .
 
-# 在容器内全局安装 acme.sh，并将证书生成路径强行锁在我们的数据挂载目录下
+# 在容器内全局安装 acme.sh，并强行将证书锁在挂载目录
 ENV LE_CONFIG_HOME=/app/data/.acme.sh
 RUN curl https://get.acme.sh | sh
 
-# 暴露 80（ACME Standalone 强占用）和用户控制台端口
+# 暴露 80 和 443 端口
 EXPOSE 80
 EXPOSE 443
 
