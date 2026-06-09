@@ -103,7 +103,7 @@
                 </div>
                 <div class="details-list font-mono">
                   <div class="item"><span class="lbl">总内存:</span><span class="val">{{ monitorData.mem_total ? monitorData.mem_total.toFixed(2) : 1.93 }} GB</span></div>
-                  <div class="item"><span class="lbl">已用内存:</span><span class="val">{{ monitorData.mem_used ? monitorData.mem_used.toFixed(2) : 1.05 }} GB</span></div>
+                  <div class="item"><span class="lbl">已用内存:</span><span class="val--------------">{{ monitorData.mem_used ? monitorData.mem_used.toFixed(2) : 1.05 }} GB</span></div>
                   <div class="item"><span class="lbl">可用内存:</span><span class="val">{{ monitorData.mem_total ? (monitorData.mem_total - monitorData.mem_used).toFixed(2) : 0.88 }} GB</span></div>
                   <div class="item"><span class="lbl">交换空间:</span><span class="val">0MB / 0MB</span></div>
                 </div>
@@ -145,7 +145,7 @@
           </div>
         </div>
 
-        <div v-slot v-else-if="currentTab === 'tenant'">
+        <div v-else-if="currentTab === 'tenant'">
           <header class="dash-header">
             <div class="logo-area"><i class="fa-solid fa-key" style="color: #38bdf8; margin-right: 10px; font-size: 20px;"></i><h2>租户凭证管理</h2></div>
             <div class="search-bar"><input v-model="searchQuery" type="text" placeholder="输入自定义名称或主区域进行过滤..." /><button class="btn-search"><i class="fa-solid fa-magnifying-glass"></i></button></div>
@@ -160,7 +160,9 @@
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>自定义名称</th> <th>租户名</th>     <th>账号类型</th>
+                  <th>自定义名称</th>
+                  <th>租户名</th>
+                  <th>账号类型</th>
                   <th>区域</th>
                   <th>是否多区</th>
                   <th>创建时间</th>
@@ -176,11 +178,7 @@
                 <tr v-for="(acc, index) in filteredAccounts" :key="acc.id">
                   <td class="text-muted font-mono">{{ index + 1 }}</td>
                   <td class="font-bold text-primary link-style" @click="viewDetails(acc)">{{ acc.alias }}</td>
-                  <td>
-                    <span class="badge badge-neutral font-mono">
-                      {{ acc.tenant_name }}
-                    </span>
-                  </td>
+                  <td><span class="badge badge-neutral font-mono">{{ acc.tenant_name }}</span></td>
                   <td><span class="badge badge-info">{{ acc.account_type }}</span></td>
                   <td class="text-primary font-bold">{{ acc.region }}</td>
                   <td>
@@ -202,7 +200,7 @@
           </div>
         </div>
 
-        <div v-slot v-else-if="currentTab === 'security'" class="placeholder-container card" style="text-align: left; max-width: 700px; padding: 40px;">
+        <div v-else-if="currentTab === 'security'" class="placeholder-container card" style="text-align: left; max-width: 700px; padding: 40px;">
           <h3><i class="fa-solid fa-user-shield text-primary"></i> 安全与 Telegram 通知配置</h3>
           <form @submit.prevent="saveTgConfig">
             <div class="form-group"><label>Telegram Bot Token</label><input v-model="tgForm.tg_bot_token" type="text" /></div>
@@ -212,7 +210,7 @@
           </form>
         </div>
 
-        <div v-slot v-else class="placeholder-container card">
+        <div v-else class="placeholder-container card">
           <i class="fa-solid fa-boxes-stacked placeholder-icon"></i>
           <h3>「 核心模块：{{ currentTab.toUpperCase() }} 」已完成页面卡位</h3>
         </div>
@@ -294,26 +292,21 @@ const fetchMonitorData = async () => {
   } catch (e) { console.error(e) }
 }
 
-// 🚀 核心前端探测与天数智能重算逻辑
 const fetchAccounts = async () => {
   try {
     const res = await axios.get('/api/accounts/list')
     accounts.value = res.data || []
     
-    // 遍历每一个拉取上来的账号
     accounts.value.forEach(async (acc) => {
-      // 1. 如果发现是尚未探测的初始数据（租户名显示“获取中...”），自动在后台异步触发握手探针
       if (!acc.tenant_name || acc.tenant_name === '获取中...') {
         try {
           const testRes = await axios.post('/api/accounts/test', { id: acc.id })
           if (testRes.data && testRes.data.status === 'success') {
-            // 将官方服务器下发的真实指标全量洗白替换
             acc.tenant_name = testRes.data.tenant_name
             acc.created_at = testRes.data.created_at
             acc.account_type = testRes.data.account_type
             acc.is_multi_region = testRes.data.is_multi_region
             
-            // 🚀 前端根据官方拿到的 TimeCreated 重新秒算最高精度的真实存活天数
             if (acc.created_at) {
               const t = new Date(acc.created_at.replace(' ', 'T'))
               const diff = Math.floor((new Date() - t) / (1000 * 60 * 60 * 24))
@@ -322,7 +315,6 @@ const fetchAccounts = async () => {
           }
         } catch (err) { acc.tenant_name = '认证失败' }
       } else {
-		// 2. 如果之前就已经探测洗白过，则直接基于数据库里的官方注册时间原地更新存活天数
 		if (acc.created_at) {
 		  const t = new Date(acc.created_at.replace(' ', 'T'))
 		  const diff = Math.floor((new Date() - t) / (1000 * 60 * 60 * 24))
