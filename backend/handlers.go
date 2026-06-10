@@ -59,7 +59,7 @@ func HandleSystemInit(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var req SysInitRequest
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES ('username', ?), ('password', ?)", req.Username, req.Password)
+	_, _ = DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES ('username', ?), ('password', ?)", req.Username, req.Password)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"success"}`))
 }
@@ -89,7 +89,7 @@ func HandleAddAccount(w http.ResponseWriter, r *http.Request) {
 	encryptedKey, _ := EncryptText(req.PrivateKey)
 	query := `INSERT INTO oci_accounts (alias, tenancy_id, user_id, fingerprint, region, encrypted_key, account_type, is_multi_region, proxy, created_at, status, tenant_name) 
 	          VALUES (?, ?, ?, ?, ?, ?, '个人免费账号', 0, ?, datetime('now','localtime'), 'active', '获取中...')`
-	DB.Exec(query, req.Alias, req.TenancyID, req.UserID, req.Fingerprint, req.Region, encryptedKey, req.Proxy)
+	_, _ = DB.Exec(query, req.Alias, req.TenancyID, req.UserID, req.Fingerprint, req.Region, encryptedKey, req.Proxy)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"success"}`))
 }
@@ -122,7 +122,7 @@ func HandleListAccounts(w http.ResponseWriter, r *http.Request) {
 func HandleTestConnection(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var req TestAccountRequest
-	json.NewDecoder(r.Body).Decode(&req)
+	_ = json.NewDecoder(r.Body).Decode(&req)
 
 	tenantName := "真实租户探测中" // 后期此处对接真实 OCI SDK 返回值
 	officialCreatedAt := "2025-07-26 14:22:03" 
@@ -130,7 +130,7 @@ func HandleTestConnection(w http.ResponseWriter, r *http.Request) {
 	isMultiRegion := 0                          
 
 	updateQuery := `UPDATE oci_accounts SET tenant_name = ?, created_at = ?, account_type = ?, is_multi_region = ? WHERE id = ?`
-	DB.Exec(updateQuery, tenantName, officialCreatedAt, accountType, isMultiRegion, req.ID)
+	_, _ = DB.Exec(updateQuery, tenantName, officialCreatedAt, accountType, isMultiRegion, req.ID)
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":          "success",
@@ -144,8 +144,8 @@ func HandleTestConnection(w http.ResponseWriter, r *http.Request) {
 func HandleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var req TestAccountRequest
-	json.NewDecoder(r.Body).Decode(&req)
-	DB.Exec("DELETE FROM oci_accounts WHERE id = ?", req.ID)
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	_, _ = DB.Exec("DELETE FROM oci_accounts WHERE id = ?", req.ID)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"success"}`))
 }
