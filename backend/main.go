@@ -28,7 +28,6 @@ var (
 	activeToken string
 )
 
-// 监控数据结构体
 type MonitorStats struct {
 	TotalApis    int     `json:"total_apis"`
 	TotalBoots   int     `json:"total_boots"`
@@ -73,6 +72,9 @@ func main() {
 			switch r.URL.Path {
 			case "/api/status":
 				fmt.Fprintf(w, `{"status":"running","need_init":%v}`, checkInitNeeded())
+			case "/api/login": // 🚀 新增专用的鉴权放行路由
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"status":"success"}`))
 			case "/api/accounts/add":
 				HandleAddAccount(w, r)
 			case "/api/accounts/delete":
@@ -104,9 +106,7 @@ func main() {
 		certFile := filepath.Join(certDir, target+".cer")
 		keyFile := filepath.Join(certDir, target+".key")
 
-		if _, err := os.Stat(certFile); os.IsNotExist(err) {
-			runAcmeSubprocess(target, false)
-		}
+		if _, err := os.Stat(certFile); os.IsNotExist(err) { runAcmeSubprocess(target, false) }
 		startCertCheckTimer(target)
 
 		if _, err := os.Stat(certFile); err == nil {
@@ -264,16 +264,33 @@ func startCertCheckTimer(target string) {
 	go func() { for range time.Tick(24 * time.Hour) { runAcmeSubprocess(target, true) } }()
 }
 
+// 🚀【核心修正】：真正的拦截锁
 func basicAuthWrapper(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/system/init") || r.URL.Path == "/" || strings.Contains(r.URL.Path, ".") {
-			next(w, r); return
+		// 白名单：静态资源、初始化接口、前端探测状态接口直接放行
+		if r.URL.Path == "/" || strings.Contains(r.URL.Path, ".") || strings.HasPrefix(r.URL.Path, "/api/system/init") || r.URL.Path == "/api/status" {
+			next(w, r)
+			return
 		}
+
+		var dbUser, dbPass string
+		_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'username'").Scan(&dbUser)
+		_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'password'").Scan(&dbPass)
+
+		// 如果系统已经初始化，就必须验证 Authorization Header！
+		if dbUser != "" && dbPass != "" {
+			user, pass, ok := r.BasicAuth()
+			if !ok || user != dbUser || pass != dbPass {
+				w.Header().Set("WWW-Authenticate", `Basic realm="restricted"`)
+				http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+		}
+
 		next(w, r)
 	}
 }
 
-// 🚀 彻底修正：完美修复之前手滑留下的 http.Format 错误
 func HandleGetSystemConfig(w http.ResponseWriter, r *http.Request) {
 	res := make(map[string]string)
 	rows, err := DB.Query("SELECT key, value FROM system_config WHERE key IN ('tg_bot_token', 'tg_chat_id', 'tg_notify_enabled')")
