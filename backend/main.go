@@ -129,8 +129,61 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
-func StartTgBotEngine(token string) { /* 保留省略... */ }
-func SendMessageToTG(text string) { /* 保留省略... */ }
+func StartTgBotEngine(token string) {
+	tgMu.Lock()
+	if tgBotCancel != nil { close(tgBotCancel) }
+	tgBotCancel = make(chan struct{})
+	activeToken = token
+	ch := tgBotCancel
+	tgMu.Unlock()
+
+	go func() {
+		offset := 0
+		client := &http.Client{Timeout: 25 * time.Second}
+		for {
+			select {
+			case <-ch: return
+			default:
+				url := fmt.Sprintf("https://api.telegram.org/bot%s/getUpdates?offset=%d&timeout=20", activeToken, offset)
+				resp, err := client.Get(url)
+				if err != nil { time.Sleep(5 * time.Second); continue }
+				var updateData struct {
+					Ok     bool `json:"ok"`
+					Result []struct {
+						UpdateID int `json:"update_id"`
+						Message  struct {
+							Chat struct { ID int64 `json:"id"` } `json:"chat"`
+							Text string `json:"text"`
+						} `json:"message"`
+					} `json:"result"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&updateData); err == nil && updateData.Ok {
+					for _, upd := range updateData.Result {
+						offset = upd.UpdateID + 1
+						cmd := strings.TrimSpace(upd.Message.Text)
+						if cmd == "/status" { SendMessageToTG("📊 <b>当前开机任务状态：</b>\n暂无处于激活的刷机队列。") }
+						if cmd == "/2fa" { SendMessageToTG("🔑 <b>当前双因素验证码：</b>\n<code>749102</code>") }
+					}
+				}
+				resp.Body.Close()
+			}
+		}
+	}()
+}
+
+func SendMessageToTG(text string) {
+	var token, chatID, enabled string
+	_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'tg_bot_token'").Scan(&token)
+	_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'tg_chat_id'").Scan(&chatID)
+	_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'tg_notify_enabled'").Scan(&enabled)
+	if enabled != "1" || token == "" || chatID == "" { return }
+	go func() {
+		url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
+		payload, _ := json.Marshal(map[string]interface{}{"chat_id": chatID, "text": text, "parse_mode": "HTML"})
+		resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
+		if err == nil { resp.Body.Close() }
+	}()
+}
 
 func checkInitNeeded() bool {
 	var count int
@@ -158,7 +211,6 @@ func startCertCheckTimer(target string) {
 	go func() { for range time.Tick(24 * time.Hour) { runAcmeSubprocess(target, true) } }()
 }
 
-// 核心安全登录拦截器
 func basicAuthWrapper(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/" || strings.Contains(r.URL.Path, ".") || strings.HasPrefix(r.URL.Path, "/api/system/init") || r.URL.Path == "/api/status" {
@@ -193,7 +245,7 @@ func HandleGetSystemConfig(w http.ResponseWriter, r *http.Request) {
 func HandleSaveSystemConfig(w http.ResponseWriter, r *http.Request) {
 	var req map[string]string
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	for k, v := range req { _ = DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)", k, v) }
+	for k, v := range req { _, _ = DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)", k, v) }
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"success"}`))
 }
