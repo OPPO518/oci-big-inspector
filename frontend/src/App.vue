@@ -241,12 +241,22 @@ const fetchAccounts = async () => {
   if (needInit.value || !isLoggedIn.value) return
   try {
     const res = await axios.get('/api/accounts/list')
+    // 🚀 捕获后端打包回来的业务报错
+    if (res.data && res.data.error) {
+      alert("⚠️ 读取列表失败:\n" + res.data.error)
+      return
+    }
     accounts.value = res.data || []
     accounts.value.forEach(async (acc) => {
       if (!acc.tenant_name || acc.tenant_name === '获取中...') await runSingleAccountTest(acc)
-      else if (acc.created_at && acc.created_at !== '获取中') { const t = new Date(acc.created_at.replace(' ', 'T')); acc.alive_days = Math.floor((new Date() - t) / (1000 * 60 * 60 * 24)) <= 0 ? 1 : Math.floor((new Date() - t) / (1000 * 60 * 60 * 24)) }
+      else if (acc.created_at && acc.created_at !== '获取中') { const t = new Date(acc.created_at.replace(' ', 'T')); const diff = Math.floor((new Date() - t) / (1000 * 60 * 60 * 24)); acc.alive_days = diff <= 0 ? 1 : diff }
     })
-  } catch(e) {}
+  } catch(e) {
+    // 🚀 捕获网络或 HTTP 500 级报错
+    if (e.response && e.response.data && e.response.data.error) {
+      alert("❌ 列表加载熔断:\n" + e.response.data.error)
+    }
+  }
 }
 
 const batchTest = async () => { if (accounts.value.length === 0) return; alert('🚀 强制同步官方体征...'); for (const acc of accounts.value) await runSingleAccountTest(acc) }
@@ -265,7 +275,28 @@ const checkSystemStatus = async () => {
 
 const submitInit = async () => { submitting.value = true; try { const res = await axios.post('/api/system/init', initForm.value); if (res.data && res.data.status === 'success') window.location.reload() } catch(e) { alert('初始化失败') } finally { submitting.value = false } }
 const submitLogin = async () => { submitting.value = true; const token = btoa(loginForm.value.username + ':' + loginForm.value.password); axios.defaults.headers.common['Authorization'] = 'Basic ' + token; try { await axios.get('/api/login'); localStorage.setItem('big_inspector_auth', token); isLoggedIn.value = true; startTimers(); fetchAccounts() } catch(e) { alert('密码错误'); delete axios.defaults.headers.common['Authorization'] } finally { submitting.value = false } }
-const submitAddAccount = async () => { submitting.value = true; try { await axios.post('/api/accounts/add', addForm.value); showModal.value = false; fetchAccounts() } catch(e) { alert('保存失败') } finally { submitting.value = false } }
+const submitAddAccount = async () => {
+  submitting.value = true
+  try {
+    const res = await axios.post('/api/accounts/add', addForm.value)
+    if (res.data && res.data.error) {
+      alert("⚠️ 凭证存盘拒绝:\n" + res.data.error)
+      return
+    }
+    showModal.value = false
+    // 重新置空表单
+    addForm.value = { alias: '', tenancy_id: '', user_id: '', fingerprint: '', region: '', private_key: '', raw_config: '', proxy: '直连' }
+    fetchAccounts()
+  } catch(e) {
+    if (e.response && e.response.data && e.response.data.error) {
+      alert("❌ 写入后端失败:\n" + e.response.data.error)
+    } else {
+      alert("❌ 网络或接口响应异常")
+    }
+  } finally {
+    submitting.value = false
+  }
+}
 const logout = () => { isLoggedIn.value = false; localStorage.removeItem('big_inspector_auth'); delete axios.defaults.headers.common['Authorization']; window.location.reload() }
 const fetchTgConfig = async () => { try { const res = await axios.get('/api/system/config/get'); if (res.data) { tgForm.value.tg_bot_token = res.data.tg_bot_token || ''; tgForm.value.tg_chat_id = res.data.tg_chat_id || ''; tgForm.value.tg_notify_enabled = res.data.tg_notify_enabled || '0' } } catch (e) {} }
 const saveTgConfig = async () => { try { await axios.post('/api/system/config/save', tgForm.value); alert('保存成功') } catch (e) { alert('保存失败') } }
