@@ -1,10 +1,37 @@
 <template>
-  <div class="app-layout">
+  <div v-if="!loading && needInit" class="init-pure-wrapper">
+    <div class="init-card fade-in">
+      <h2>🚀 初始化最高管理安全凭证</h2>
+      <p class="text-sm text-muted">大探长检测到这是您的首次登录（或系统刚刚重置）。请先设定本地管理员凭证以对齐群控安全策略。</p>
+      
+      <form @submit.prevent="submitInit">
+        <div class="form-group">
+          <label>最高管理员账号</label>
+          <input v-model="initForm.username" type="text" required placeholder="请输入管理员用户名..." />
+        </div>
+        <div class="form-group">
+          <label>高强度安全密码</label>
+          <input v-model="initForm.password" type="password" required placeholder="请输入本地安全访问密码..." />
+        </div>
+        <button type="submit" :disabled="submitting" class="btn btn-check" style="width:100%; justify-content: center;">
+          <i class="fa-solid fa-shield-halved"></i> 保存凭证并解锁群控面板
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div v-else-if="loading" class="loading-screen-full">
+    <div class="spinner"></div>
+    <h2>大探长控制台安全握手中...</h2>
+  </div>
+
+  <div v-else class="app-layout fade-in">
     <aside class="sidebar">
       <div class="sidebar-brand">
         <i class="fa-solid fa-user-secret text-primary" style="font-size: 22px;"></i>
         <span>大探长 OCI 群控</span>
       </div>
+      
       <div class="sidebar-menu">
         <div class="menu-group">服务 management</div>
         <a href="#" class="menu-item" :class="{ active: currentTab === 'monitor' }" @click="currentTab = 'monitor'">
@@ -16,6 +43,7 @@
         <a href="#" class="menu-item" :class="{ active: currentTab === 'quota' }" @click="currentTab = 'quota'">
           <i class="fa-solid fa-earth-americas"></i> OCI 区域管理
         </a>
+
         <div class="menu-group">群控自动化</div>
         <a href="#" class="menu-item" :class="{ active: currentTab === 'boot' }" @click="currentTab = 'boot'">
           <i class="fa-solid fa-circle-play"></i> OCI 开机管理
@@ -23,10 +51,12 @@
         <a href="#" class="menu-item" :class="{ active: currentTab === 'boot-logs' }" @click="currentTab = 'boot-logs'">
           <i class="fa-solid fa-terminal"></i> OCI 开机日志
         </a>
+
         <div class="menu-group">资源 management</div>
         <a href="#" class="menu-item" :class="{ active: currentTab === 'instances' }" @click="currentTab = 'instances'">
           <i class="fa-solid fa-server"></i> OCI 实例列表
         </a>
+
         <div class="menu-group">系统管理</div>
         <a href="#" class="menu-item" :class="{ active: currentTab === 'security' }" @click="currentTab = 'security'">
           <i class="fa-solid fa-user-shield"></i> 安全管理
@@ -35,23 +65,7 @@
     </aside>
 
     <div class="main-wrapper">
-      <div v-if="loading" class="loading-screen">
-        <div class="spinner"></div>
-        <h2>大探长控制台安全握手中...</h2>
-      </div>
-
-      <div v-else-if="needInit" class="init-screen">
-        <div class="init-card fade-in">
-          <h2>🚀 初始化最高管理安全凭证</h2>
-          <form @submit.prevent="submitInit">
-            <div class="form-group"><label>管理员账号</label><input v-model="initForm.username" type="text" required /></div>
-            <div class="form-group"><label>高强度安全密码</label><input v-model="initForm.password" type="password" required /></div>
-            <button type="submit" :disabled="submitting" class="btn btn-check" style="width:100%">保存并启动面板</button>
-          </form>
-        </div>
-      </div>
-
-      <main class="main-content fade-in">
+      <main class="main-content">
         
         <div v-if="currentTab === 'monitor'">
           <div class="monitor-header">
@@ -156,7 +170,9 @@
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>自定义名称</th> <th>租户名</th>     <th>账号类型</th>
+                  <th>自定义名称</th>
+                  <th>租户名</th>
+                  <th>账号类型</th>
                   <th>区域</th>
                   <th>是否多区</th>
                   <th>创建时间</th>
@@ -173,20 +189,21 @@
                   <td class="text-muted font-mono">{{ index + 1 }}</td>
                   <td class="font-bold text-primary link-style">{{ acc.alias }}</td>
                   <td><span class="badge badge-neutral font-mono">{{ acc.tenant_name }}</span></td>
-                  <td><span class="badge badge-info">{{ acc.account_type || '未探测' }}</span></td>
+                  <td><span class="badge badge-info">{{ acc.account_type || '个人免费账号' }}</span></td>
                   <td class="text-primary font-bold">{{ acc.region }}</td>
                   <td>
                     <span v-if="acc.is_multi_region" class="badge badge-success">● Yes</span>
                     <span v-else class="text-muted" style="font-size: 13px;">● No</span>
                   </td>
                   <td class="text-sm font-mono">{{ formatTime(acc.created_at) }}</td>
-                  <td class="font-mono text-success font-bold">{{ acc.alive_days }}d</td>
+                  <td class="font-mono text-success font-bold">{{ acc.alive_days || 1 }}d</td>
                   <td><span v-if="acc.has_boot_task" class="badge badge-warning animate-pulse">○ Active</span><span v-else class="text-muted">○ Idle</span></td>
                   <td><span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> 有效</span></td>
                   <td class="font-mono text-sm code-font">{{ acc.proxy }}</td>
                   <td class="action-cell">
                     <button class="btn-create-spec" @click="fastCreate(acc)"><i class="fa-solid fa-rocket"></i> 创建</button>
-                    <button class="btn-delete-spec" @click="deleteAccount(acc)"><i class="fa-solid fa-trash-can"></i> 删除</button> </td>
+                    <button class="btn-delete-spec" @click="deleteAccount(acc)"><i class="fa-solid fa-trash-can"></i> 删除</button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -213,7 +230,6 @@
         <div class="modal-content fade-in-up">
           <h3><i class="fa-solid fa-bolt" style="color:#22c55e;"></i> API 凭证自动化纳管</h3>
           <p class="text-sm text-muted" style="margin-bottom: 20px;">无需手动勾选，填入生存要素，系统会自动通过甲骨文探针同步其账号身份与注册时间。</p>
-          
           <form @submit.prevent="submitAddAccount">
             <div class="form-group">
               <label>1. 粘贴 OCI 原始凭证 (Config)</label>
@@ -274,7 +290,7 @@ const startTimers = () => {
 }
 
 const fetchMonitorData = async () => {
-  if (currentTab.value !== 'monitor') return
+  if (currentTab.value !== 'monitor' || needInit.value) return
   try {
     const res = await axios.get('/api/system/monitor')
     if (res.data) monitorData.value = res.data
@@ -302,6 +318,7 @@ const runSingleAccountTest = async (acc) => {
 }
 
 const fetchAccounts = async () => {
+  if (needInit.value) return
   try {
     const res = await axios.get('/api/accounts/list')
     accounts.value = res.data || []
@@ -326,18 +343,16 @@ const batchTest = async () => {
   alert('🎉 所有账号官方体征盘点清洗完成！')
 }
 
-// 🚀 核心一键物理抹除安全机制
 const deleteAccount = async (acc) => {
-  if (!confirm(`⚠️ 警告：确定要彻底删除租户凭证 [${acc.alias}] 吗？\n\n此操作会完全切断后台与甲骨文服务器的所有自动连接，删除后将物理抹除！`)) return
+  if (!confirm(`⚠️ 警告：确定要彻底删除租户凭证 [${acc.alias}] 吗？`)) return
   try {
     const res = await axios.post('/api/accounts/delete', { id: acc.id })
-    if (res.data && res.data.status === 'success') {
-      fetchAccounts() 
-    }
-  } catch (e) { alert('删除失败，请检查网络响应') }
+    if (res.data && res.data.status === 'success') { fetchAccounts() }
+  } catch (e) { alert('删除失败') }
 }
 
 watch(currentTab, (newTab) => {
+  if (needInit.value) return
   if (newTab === 'monitor') fetchMonitorData()
   if (newTab === 'security') fetchTgConfig()
   if (newTab === 'tenant') fetchAccounts()
@@ -379,8 +394,12 @@ const handleFileUpload = (event) => {
 const checkSystemStatus = async () => {
   try {
     const res = await axios.get('/api/status')
-    needInit.value = res.data?.need_init
-    if (!needInit.value) { startTimers(); fetchAccounts() }
+    needInit.value = !!res.data?.need_init
+    // 🚀 【核心整改】：只有当 need_init 彻底为 false 时，才允许初始化时钟和拉取租户
+    if (!needInit.value) { 
+      startTimers()
+      fetchAccounts() 
+    }
   } catch(e) { needInit.value = false }
   finally { loading.value = false }
 }
@@ -402,26 +421,13 @@ const saveTgConfig = async () => {
 
 const submitInit = async () => {
   submitting.value = true
-  try { await axios.post('/api/system/init', initForm.value); window.location.reload() } finally { submitting.value = false }
-}
-
-const submitAddAccount = async () => {
-  submitting.value = true
-  try {
-    await axios.post('/api/accounts/add', addForm.value)
-    showModal.value = false
-    addForm.value = { alias: '', tenancy_id: '', user_id: '', fingerprint: '', region: '', private_key: '', raw_config: '', proxy: '直连' }
-    uploadedFileName.value = '未选择任何文件'
-    fetchAccounts()
-  } catch(e) { alert('凭证保存失败，请核对基本参数') } 
+  try { 
+    const res = await axios.post('/api/system/init', initForm.value)
+    if (res.data && res.data.status === 'success') {
+      window.location.reload() // 录入成功后强制重载，重新跑状态机直接丝滑进入后台监控
+    }
+  } catch(e) { alert('初始化失败，请检查后端数据库连接') }
   finally { submitting.value = false }
-}
-
-const fastCreate = (acc) => { alert(`正在调取 [${acc.alias}] 执行快速挂载与开机向导...`) }
-const viewDetails = (acc) => { alert(`打开账户 [${acc.alias}] 的配置详情页`) }
-const formatTime = (t) => {
-  if (!t || t === '获取中') return '获取中'
-  return t.substring(0, 10)
 }
 
 onMounted(() => checkSystemStatus())
@@ -434,6 +440,12 @@ body { background-color: #0b0f19; color: #cbd5e1; font-family: -apple-system, Bl
 .fade-in-up { animation: fadeInUp 0.3s ease-out forwards; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+
+/* 🚀 纯净第一关独立布局，实现物理隔离 */
+.init-pure-wrapper { min-height: 100vh; background-color: #0b0f19; display: flex; justify-content: center; align-items: center; padding: 20px; width: 100vw; box-sizing: border-box; }
+.init-card { background: #111827; padding: 35px; border-radius: 12px; width: 100%; max-width: 480px; border: 1px solid #1f2937; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+.init-card h2 { margin-top: 0; margin-bottom: 10px; font-size: 20px; color: #fff; text-align: center; }
+.init-card p { text-align: center; margin-bottom: 25px; line-height: 1.5; }
 
 .app-layout { display: flex; min-height: 100vh; }
 .sidebar { width: 250px; background: #111827; border-right: 1px solid #1f2937; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; height: 100vh; z-index: 10; }
@@ -508,10 +520,7 @@ tr:hover { background: #161e2e; }
 .placeholder-container { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 80px 40px; margin: 40px auto; max-width: 650px; background: #111827; border-radius: 12px; border: 1px solid #1f2937; }
 .btn { border: none; padding: 8px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
 .btn-api { background: #10b981; color: white; } .btn-export { background: #1f2937; color: #9ca3af; border: 1px solid #374151; } .btn-check { background: #2563eb; color: white; }
-.btn-icon { padding: 8px 12px; background: #1e293b; color: #cbd5e1; border: none; border-radius: 6px; cursor: pointer; }
 .btn-create-spec { background: #f59e0b; color: #000; font-weight: 700; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 8px; }
-
-/* 红色强力安全卸载控制按钮 */
 .btn-delete-spec { background: #ef4444; color: #fff; font-weight: 600; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
 .btn-delete-spec:hover { background: #dc2626; }
 
@@ -528,6 +537,8 @@ tr:hover { background: #161e2e; }
 .hidden-file-input { display: none; }
 .file-upload-btn { background: #1f2937; color: #e5e7eb; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid #374151; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px; }
+
+.loading-screen-full { position: fixed; top:0; left:0; right:0; bottom:0; background: #0b0f19; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; }
 .spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid #38bdf8; border-radius: 50%; width: 35px; height: 35px; animation: spin 1s linear infinite; margin-bottom: 15px; }
 @keyframes spin { 100% { transform: rotate(360deg); } }
 </style>
