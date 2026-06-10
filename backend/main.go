@@ -28,7 +28,7 @@ var (
 	activeToken string
 )
 
-// 监控数据结构体，仅在此处声明一次
+// 监控数据结构体
 type MonitorStats struct {
 	TotalApis    int     `json:"total_apis"`
 	TotalBoots   int     `json:"total_boots"`
@@ -76,7 +76,7 @@ func main() {
 			case "/api/accounts/add":
 				HandleAddAccount(w, r)
 			case "/api/accounts/delete":
-				HandleDeleteAccount(w, r) // 🚀 新增物理注销卸载路由
+				HandleDeleteAccount(w, r)
 			case "/api/system/init":
 				HandleSystemInit(w, r)
 			case "/api/accounts/list":
@@ -273,5 +273,37 @@ func basicAuthWrapper(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func HandleGetSystemConfig(w http.ResponseWriter, r *http.Format) { /* 保持原样 */ }
-func HandleSaveSystemConfig(w http.ResponseWriter, r *http.Request) { /* 保持原样 */ }
+// 🚀 彻底修正：完美修复之前手滑留下的 http.Format 错误
+func HandleGetSystemConfig(w http.ResponseWriter, r *http.Request) {
+	res := make(map[string]string)
+	rows, err := DB.Query("SELECT key, value FROM system_config WHERE key IN ('tg_bot_token', 'tg_chat_id', 'tg_notify_enabled')")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var k, v string
+			if rows.Scan(&k, &v) == nil { res[k] = v }
+		}
+	}
+	json.NewEncoder(w).Encode(res)
+}
+
+func HandleSaveSystemConfig(w http.ResponseWriter, r *http.Request) {
+	var req map[string]string
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	var newToken string
+	for k, v := range req {
+		_, _ = DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES (?, ?)", k, v)
+		if k == "tg_bot_token" { newToken = v }
+	}
+	if newToken != "" {
+		StartTgBotEngine(newToken)
+		if req["tg_notify_enabled"] == "1" {
+			go func() {
+				time.Sleep(1 * time.Second)
+				SendMessageToTG("🤖 <b>大探长 OCI 控制台喜报</b>\n\n🎉 您的系统配置与 Telegram Bot 已成功测通！")
+			}()
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(`{"status":"success"}`))
+}
