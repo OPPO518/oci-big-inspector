@@ -5,7 +5,6 @@
         <i class="fa-solid fa-user-secret text-primary" style="font-size: 22px;"></i>
         <span>大探长 OCI 群控</span>
       </div>
-      
       <div class="sidebar-menu">
         <div class="menu-group">服务 management</div>
         <a href="#" class="menu-item" :class="{ active: currentTab === 'monitor' }" @click="currentTab = 'monitor'">
@@ -17,7 +16,6 @@
         <a href="#" class="menu-item" :class="{ active: currentTab === 'quota' }" @click="currentTab = 'quota'">
           <i class="fa-solid fa-earth-americas"></i> OCI 区域管理
         </a>
-
         <div class="menu-group">群控自动化</div>
         <a href="#" class="menu-item" :class="{ active: currentTab === 'boot' }" @click="currentTab = 'boot'">
           <i class="fa-solid fa-circle-play"></i> OCI 开机管理
@@ -25,12 +23,10 @@
         <a href="#" class="menu-item" :class="{ active: currentTab === 'boot-logs' }" @click="currentTab = 'boot-logs'">
           <i class="fa-solid fa-terminal"></i> OCI 开机日志
         </a>
-
-        <div class="menu-group">资源管理</div>
+        <div class="menu-group">资源 management</div>
         <a href="#" class="menu-item" :class="{ active: currentTab === 'instances' }" @click="currentTab = 'instances'">
           <i class="fa-solid fa-server"></i> OCI 实例列表
         </a>
-
         <div class="menu-group">系统管理</div>
         <a href="#" class="menu-item" :class="{ active: currentTab === 'security' }" @click="currentTab = 'security'">
           <i class="fa-solid fa-user-shield"></i> 安全管理
@@ -160,9 +156,7 @@
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>自定义名称</th>
-                  <th>租户名</th>
-                  <th>账号类型</th>
+                  <th>自定义名称</th> <th>租户名</th>     <th>账号类型</th>
                   <th>区域</th>
                   <th>是否多区</th>
                   <th>创建时间</th>
@@ -187,16 +181,12 @@
                   </td>
                   <td class="text-sm font-mono">{{ formatTime(acc.created_at) }}</td>
                   <td class="font-mono text-success font-bold">{{ acc.alive_days }}d</td>
-                  <td>
-                    <span v-if="acc.has_boot_task" class="badge badge-warning animate-pulse">○ Active</span>
-                    <span v-else class="text-muted">○ Idle</span>
-                  </td>
+                  <td><span v-if="acc.has_boot_task" class="badge badge-warning animate-pulse">○ Active</span><span v-else class="text-muted">○ Idle</span></td>
                   <td><span class="badge badge-success"><i class="fa-solid fa-circle-check"></i> 有效</span></td>
                   <td class="font-mono text-sm code-font">{{ acc.proxy }}</td>
                   <td class="action-cell">
-                    <button class="btn-create-spec" @click="fastCreate(acc)"><i class="fa-solid fa-rocket"></i> 创建实例</button>
-                    <button class="btn-delete-spec" @click="deleteAccount(acc)" title="彻底删除凭证"><i class="fa-solid fa-trash-can"></i> 删除</button>
-                  </td>
+                    <button class="btn-create-spec" @click="fastCreate(acc)"><i class="fa-solid fa-rocket"></i> 创建</button>
+                    <button class="btn-delete-spec" @click="deleteAccount(acc)"><i class="fa-solid fa-trash-can"></i> 删除</button> </td>
                 </tr>
               </tbody>
             </table>
@@ -223,6 +213,7 @@
         <div class="modal-content fade-in-up">
           <h3><i class="fa-solid fa-bolt" style="color:#22c55e;"></i> API 凭证自动化纳管</h3>
           <p class="text-sm text-muted" style="margin-bottom: 20px;">无需手动勾选，填入生存要素，系统会自动通过甲骨文探针同步其账号身份与注册时间。</p>
+          
           <form @submit.prevent="submitAddAccount">
             <div class="form-group">
               <label>1. 粘贴 OCI 原始凭证 (Config)</label>
@@ -335,13 +326,13 @@ const batchTest = async () => {
   alert('🎉 所有账号官方体征盘点清洗完成！')
 }
 
-// 🚀 新增：前端一键安全截断销户方法
+// 🚀 核心一键物理抹除安全机制
 const deleteAccount = async (acc) => {
-  if (!confirm(`⚠️ 警告：确定要彻底删除租户凭证 [${acc.alias}] 吗？\n\n此操作会完全切断后台与甲骨文服务器的所有自动连接，删除后将无法恢复！`)) return
+  if (!confirm(`⚠️ 警告：确定要彻底删除租户凭证 [${acc.alias}] 吗？\n\n此操作会完全切断后台与甲骨文服务器的所有自动连接，删除后将物理抹除！`)) return
   try {
     const res = await axios.post('/api/accounts/delete', { id: acc.id })
     if (res.data && res.data.status === 'success') {
-      fetchAccounts() // 立即重新洗牌刷新主表格
+      fetchAccounts() 
     }
   } catch (e) { alert('删除失败，请检查网络响应') }
 }
@@ -519,7 +510,8 @@ tr:hover { background: #161e2e; }
 .btn-api { background: #10b981; color: white; } .btn-export { background: #1f2937; color: #9ca3af; border: 1px solid #374151; } .btn-check { background: #2563eb; color: white; }
 .btn-icon { padding: 8px 12px; background: #1e293b; color: #cbd5e1; border: none; border-radius: 6px; cursor: pointer; }
 .btn-create-spec { background: #f59e0b; color: #000; font-weight: 700; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 8px; }
-/* 红色强力卸载按钮样式 */
+
+/* 红色强力安全卸载控制按钮 */
 .btn-delete-spec { background: #ef4444; color: #fff; font-weight: 600; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s; }
 .btn-delete-spec:hover { background: #dc2626; }
 
