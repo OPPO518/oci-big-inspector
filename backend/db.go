@@ -6,50 +6,53 @@ import (
 	"os"
 	"path/filepath"
 
-	_ "github.com/glebarez/go-sqlite"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var DB *sql.DB
 
+// InitializeDB 负责在系统初载时，创建完美对齐的工业级数据库表结构
 func InitializeDB() {
 	dbDir := "/app/data"
-	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
-		dbDir = "./data"
-	}
 	_ = os.MkdirAll(dbDir, 0755)
-
 	dbPath := filepath.Join(dbDir, "inspector.db")
-	log.Printf("📦 [数据库] 正在连接/创建本地 SQLite 数据库: %s", dbPath)
 
 	var err error
-	DB, err = sql.Open("sqlite", dbPath)
+	DB, err = sql.Open("sqlite3", dbPath)
 	if err != nil {
-		log.Fatalf("❌ 数据库打开失败: %v", err)
+		log.Fatalf("❌ 无法打开 SQLite 数据库: %v", err)
 	}
 
-	// 1. 创建系统配置表（存放 Web 界面初始化的账号密码）
-	createConfigTable := `
+	// 1. 创建系统基础配置表
+	configTableQuery := `
 	CREATE TABLE IF NOT EXISTS system_config (
 		key TEXT PRIMARY KEY,
-		value TEXT NOT NULL
+		value TEXT
 	);`
-	_, _ = DB.Exec(createConfigTable)
+	_, err = DB.Exec(configTableQuery)
+	if err != nil {
+		log.Fatalf("❌ 创建 system_config 表失败: %v", err)
+	}
 
-	// 2. 创建账户凭证表保持不变
-	createTableSQL := `
+	// 2. 🚀【核心修正】：创建满血完全体的 OCI 租户凭证表，把所有缺少的列全部锁死进初始化中
+	accountTableQuery := `
 	CREATE TABLE IF NOT EXISTS oci_accounts (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		alias TEXT NOT NULL,
-		tenancy_id TEXT NOT NULL,
-		user_id TEXT NOT NULL,
-		fingerprint TEXT NOT NULL,
-		region TEXT NOT NULL,
-		encrypted_key TEXT NOT NULL,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		alias TEXT,
+		tenancy_id TEXT,
+		user_id TEXT,
+		fingerprint TEXT,
+		region TEXT,
+		encrypted_key TEXT,
+		account_type TEXT DEFAULT '个人免费账号',
+		is_multi_region INTEGER DEFAULT 0,
+		proxy TEXT DEFAULT '直连',
+		created_at TEXT,
+		status TEXT DEFAULT 'active',
+		tenant_name TEXT DEFAULT '获取中...'
 	);`
-	_, err = DB.Exec(createTableSQL)
+	_, err = DB.Exec(accountTableQuery)
 	if err != nil {
-		log.Fatalf("❌ 数据表创建失败: %v", err)
+		log.Fatalf("❌ 创建 oci_accounts 表失败: %v", err)
 	}
-	log.Println("✅ [数据库] 所有数据表初始化检查完成。")
 }
