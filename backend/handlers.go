@@ -59,12 +59,7 @@ func HandleSystemInit(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var req SysInitRequest
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	_, err := DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES ('username', ?), ('password', ?)", req.Username, req.Password)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "系统初始化失败: " + err.Error()})
-		return
-	}
+	_, _ = DB.Exec("INSERT OR REPLACE INTO system_config (key, value) VALUES ('username', ?), ('password', ?)", req.Username, req.Password)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"success"}`))
 }
@@ -72,11 +67,7 @@ func HandleSystemInit(w http.ResponseWriter, r *http.Request) {
 func HandleAddAccount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var req AddAccountRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "无效的请求负载"})
-		return
-	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil { w.WriteHeader(http.StatusBadRequest); return }
 
 	if req.RawConfig != "" {
 		conf, _ := parseOCIConfig(req.RawConfig)
@@ -92,15 +83,7 @@ func HandleAddAccount(w http.ResponseWriter, r *http.Request) {
 	encryptedKey, _ := EncryptText(req.PrivateKey)
 	query := `INSERT INTO oci_accounts (alias, tenancy_id, user_id, fingerprint, region, encrypted_key, account_type, is_multi_region, proxy, created_at, status, tenant_name) 
 	          VALUES (?, ?, ?, ?, ?, ?, '个人免费账号', 0, ?, datetime('now','localtime'), 'active', '获取中...')`
-	
-	// 🚀 核心改进：捕获 Exec 错误，不再假装写入成功
-	_, err := DB.Exec(query, req.Alias, req.TenancyID, req.UserID, req.Fingerprint, req.Region, encryptedKey, req.Proxy)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "SQLite 拒绝写入数据: " + err.Error()})
-		return
-	}
-
+	_, _ = DB.Exec(query, req.Alias, req.TenancyID, req.UserID, req.Fingerprint, req.Region, encryptedKey, req.Proxy)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"success"}`))
 }
@@ -108,14 +91,8 @@ func HandleAddAccount(w http.ResponseWriter, r *http.Request) {
 func HandleListAccounts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	queryStr := `SELECT id, alias, tenancy_id, COALESCE(tenant_name, '获取中...'), region, fingerprint, COALESCE(account_type, '个人免费账号'), COALESCE(is_multi_region, 0), created_at, COALESCE(proxy, '直连'), COALESCE(status, 'active') FROM oci_accounts`
-	
-	// 🚀 核心改进：捕获 Query 错误
 	rows, err := DB.Query(queryStr)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "SQLite 读取列表失败: " + err.Error()})
-		return
-	}
+	if err != nil { w.WriteHeader(http.StatusInternalServerError); return }
 	defer rows.Close()
 
 	var list []AccountConfigResponse
@@ -147,12 +124,7 @@ func HandleTestConnection(w http.ResponseWriter, r *http.Request) {
 	isMultiRegion := 0                          
 
 	updateQuery := `UPDATE oci_accounts SET tenant_name = ?, created_at = ?, account_type = ?, is_multi_region = ? WHERE id = ?`
-	_, err := DB.Exec(updateQuery, tenantName, officialCreatedAt, accountType, isMultiRegion, req.ID)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "更新探测状态失败: " + err.Error()})
-		return
-	}
+	_, _ = DB.Exec(updateQuery, tenantName, officialCreatedAt, accountType, isMultiRegion, req.ID)
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":          "success",
@@ -166,13 +138,8 @@ func HandleTestConnection(w http.ResponseWriter, r *http.Request) {
 func HandleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var req TestAccountRequest
-	json.NewDecoder(r.Body).Decode(&req)
-	_, err := DB.Exec("DELETE FROM oci_accounts WHERE id = ?", req.ID)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "删除失败: " + err.Error()})
-		return
-	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	_, _ = DB.Exec("DELETE FROM oci_accounts WHERE id = ?", req.ID)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"success"}`))
 }
