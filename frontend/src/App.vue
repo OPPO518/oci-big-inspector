@@ -2,8 +2,7 @@
   <div v-if="!loading && needInit" class="init-pure-wrapper">
     <div class="init-card fade-in">
       <h2>🚀 初始化最高管理安全凭证</h2>
-      <p class="text-sm text-muted">大探长检测到这是您的首次登录（或系统刚刚重置）。请先设定本地管理员凭证以对齐群控安全策略。</p>
-      
+      <p class="text-sm text-muted">系统尚未初始化，请设定本地管理员凭证以对齐群控安全策略。</p>
       <form @submit.prevent="submitInit">
         <div class="form-group">
           <label>最高管理员账号</label>
@@ -14,7 +13,27 @@
           <input v-model="initForm.password" type="password" required placeholder="请输入本地安全访问密码..." />
         </div>
         <button type="submit" :disabled="submitting" class="btn btn-check" style="width:100%; justify-content: center;">
-          <i class="fa-solid fa-shield-halved"></i> 保存凭证并解锁群控面板
+          <i class="fa-solid fa-shield-halved"></i> 保存凭证并启动系统
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div v-else-if="!loading && !needInit && !isLoggedIn" class="init-pure-wrapper">
+    <div class="init-card fade-in">
+      <h2><i class="fa-solid fa-lock text-primary"></i> 大探长安全身份验证</h2>
+      <p class="text-sm text-muted">非法请求已被阻断。请验证身份后进入控制台。</p>
+      <form @submit.prevent="submitLogin">
+        <div class="form-group">
+          <label>管理员账号</label>
+          <input v-model="loginForm.username" type="text" required placeholder="请输入用户名" />
+        </div>
+        <div class="form-group">
+          <label>管理员密码</label>
+          <input v-model="loginForm.password" type="password" required placeholder="请输入密码" />
+        </div>
+        <button type="submit" :disabled="submitting" class="btn btn-check" style="width:100%; justify-content: center;">
+          登 录
         </button>
       </form>
     </div>
@@ -60,6 +79,10 @@
         <div class="menu-group">系统管理</div>
         <a href="#" class="menu-item" :class="{ active: currentTab === 'security' }" @click="currentTab = 'security'">
           <i class="fa-solid fa-user-shield"></i> 安全管理
+        </a>
+        
+        <a href="#" class="menu-item" style="color: #ef4444; margin-top: auto; border-top: 1px dashed #1f2937; border-radius: 0;" @click.prevent="logout">
+          <i class="fa-solid fa-right-from-bracket" style="color: #ef4444;"></i> 退出面板
         </a>
       </div>
     </aside>
@@ -229,32 +252,31 @@
       <div v-if="showModal" class="modal-overlay" @click.self="showModal = false">
         <div class="modal-content fade-in-up">
           <h3><i class="fa-solid fa-bolt" style="color:#22c55e;"></i> API 凭证自动化纳管</h3>
-          <p class="text-sm text-muted" style="margin-bottom: 20px;">无需手动勾选，填入生存要素，系统会自动通过甲骨文探针同步其账号身份与注册时间。</p>
           <form @submit.prevent="submitAddAccount">
             <div class="form-group">
               <label>1. 粘贴 OCI 原始凭证 (Config)</label>
               <textarea v-model="addForm.raw_config" rows="4" class="code-input" placeholder="粘贴官方生成的 [DEFAULT] 配置文本..."></textarea>
             </div>
             <div class="form-group">
-              <label>2. 自定义名称（唯一必填手工项）</label>
+              <label>2. 自定义名称</label>
               <input v-model="addForm.alias" type="text" required placeholder="如：墨西哥蒙特雷A、compta主号" />
             </div>
             <div class="form-group">
-              <label>3. 专属代理网络（防关联隔离，直连请保持默认）</label>
+              <label>3. 专属代理网络</label>
               <input v-model="addForm.proxy" type="text" placeholder="IP:PORT，直连则写 '直连'" />
             </div>
             <div class="form-group">
-              <label>4. 密钥文件 (.pem / 文本粘贴皆可)</label>
+              <label>4. 密钥文件</label>
               <div class="file-upload-wrapper">
                 <input type="file" @change="handleFileUpload" accept=".pem,.key" id="file-upload" class="hidden-file-input" />
                 <label for="file-upload" class="file-upload-btn"><i class="fa-solid fa-file-shield"></i> 选择私钥文件</label>
                 <span class="text-sm font-mono" style="margin-left: 10px; color: #38bdf8;">{{ uploadedFileName }}</span>
               </div>
-              <textarea v-model="addForm.private_key" rows="3" placeholder="或者直接在此粘贴 API Private Key 文本内容..." style="margin-top:10px; font-family: monospace;"></textarea>
+              <textarea v-model="addForm.private_key" rows="3" placeholder="或者在此粘贴内容..." style="margin-top:10px; font-family: monospace;"></textarea>
             </div>
             <div class="modal-actions">
               <button type="button" class="btn btn-export" @click="showModal = false">取消</button>
-              <button type="submit" :disabled="submitting" class="btn btn-api">立即存盘并触发自动体征探测</button>
+              <button type="submit" :disabled="submitting" class="btn btn-api">存盘</button>
             </div>
           </form>
         </div>
@@ -268,7 +290,8 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import axios from 'axios'
 
-const loading = ref(true); const needInit = ref(false); const submitting = ref(false); const showModal = ref(false); const accounts = ref([])
+const loading = ref(true); const needInit = ref(false); const isLoggedIn = ref(false); 
+const submitting = ref(false); const showModal = ref(false); const accounts = ref([])
 const searchQuery = ref(''); const uploadedFileName = ref('未选择任何文件')
 const currentTab = ref('monitor') 
 const currentTimeStr = ref('')
@@ -277,8 +300,22 @@ const monitorData = ref({ total_apis: 0, total_boots: 0, total_runs: 0, success_
 let clockTimer = null; let monitorTimer = null
 
 const initForm = ref({ username: '', password: '' })
+const loginForm = ref({ username: '', password: '' })
 const tgForm = ref({ tg_bot_token: '', tg_chat_id: '', tg_notify_enabled: '0' })
 const addForm = ref({ alias: '', tenancy_id: '', user_id: '', fingerprint: '', region: '', private_key: '', raw_config: '', proxy: '直连' })
+
+// 🚀 全局请求拦截器：如果遇到密码错误或登录失效，立刻踢出回登录页
+axios.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      isLoggedIn.value = false
+      localStorage.removeItem('big_inspector_auth')
+      delete axios.defaults.headers.common['Authorization']
+    }
+    return Promise.reject(error)
+  }
+)
 
 const startTimers = () => {
   clockTimer = setInterval(() => {
@@ -290,11 +327,11 @@ const startTimers = () => {
 }
 
 const fetchMonitorData = async () => {
-  if (currentTab.value !== 'monitor' || needInit.value) return
+  if (currentTab.value !== 'monitor' || needInit.value || !isLoggedIn.value) return
   try {
     const res = await axios.get('/api/system/monitor')
     if (res.data) monitorData.value = res.data
-  } catch (e) { console.error(e) }
+  } catch (e) {}
 }
 
 const runSingleAccountTest = async (acc) => {
@@ -307,7 +344,6 @@ const runSingleAccountTest = async (acc) => {
       acc.created_at = testRes.data.created_at
       acc.account_type = testRes.data.account_type
       acc.is_multi_region = testRes.data.is_multi_region
-      
       if (acc.created_at) {
         const t = new Date(acc.created_at.replace(' ', 'T'))
         const diff = Math.floor((new Date() - t) / (1000 * 60 * 60 * 24))
@@ -318,7 +354,7 @@ const runSingleAccountTest = async (acc) => {
 }
 
 const fetchAccounts = async () => {
-  if (needInit.value) return
+  if (needInit.value || !isLoggedIn.value) return
   try {
     const res = await axios.get('/api/accounts/list')
     accounts.value = res.data || []
@@ -333,14 +369,13 @@ const fetchAccounts = async () => {
         }
       }
     })
-  } catch(e) { console.error(e) }
+  } catch(e) {}
 }
 
 const batchTest = async () => {
   if (accounts.value.length === 0) return
-  alert('🚀 正在拉起官方体征强刷引擎！无视所有本地缓存，强制同步最新的官方生存天数与注册日期...')
+  alert('🚀 强制同步最新的官方生存天数与注册日期...')
   for (const acc of accounts.value) { await runSingleAccountTest(acc) }
-  alert('🎉 所有账号官方体征盘点清洗完成！')
 }
 
 const deleteAccount = async (acc) => {
@@ -351,8 +386,15 @@ const deleteAccount = async (acc) => {
   } catch (e) { alert('删除失败') }
 }
 
+const logout = () => {
+  isLoggedIn.value = false
+  localStorage.removeItem('big_inspector_auth')
+  delete axios.defaults.headers.common['Authorization']
+  window.location.reload()
+}
+
 watch(currentTab, (newTab) => {
-  if (needInit.value) return
+  if (needInit.value || !isLoggedIn.value) return
   if (newTab === 'monitor') fetchMonitorData()
   if (newTab === 'security') fetchTgConfig()
   if (newTab === 'tenant') fetchAccounts()
@@ -391,14 +433,28 @@ const handleFileUpload = (event) => {
   reader.readAsText(file)
 }
 
+// 🚀 核心判定：检测系统状态与本地 Token 登录态
 const checkSystemStatus = async () => {
   try {
     const res = await axios.get('/api/status')
     needInit.value = !!res.data?.need_init
-    // 🚀 【核心整改】：只有当 need_init 彻底为 false 时，才允许初始化时钟和拉取租户
+    
+    // 如果系统已经初始化，就检查本地是否有缓存的密码本
     if (!needInit.value) { 
-      startTimers()
-      fetchAccounts() 
+      const savedToken = localStorage.getItem('big_inspector_auth')
+      if (savedToken) {
+        axios.defaults.headers.common['Authorization'] = 'Basic ' + savedToken
+        try {
+          await axios.get('/api/login') // 用存着的密码去敲一下后端的门
+          isLoggedIn.value = true
+          startTimers()
+          fetchAccounts()
+        } catch(e) {
+          isLoggedIn.value = false // 密码被改了或者失效了，打回登录页
+        }
+      } else {
+        isLoggedIn.value = false // 新电脑打开，没密码，打回登录页
+      }
     }
   } catch(e) { needInit.value = false }
   finally { loading.value = false }
@@ -412,11 +468,11 @@ const fetchTgConfig = async () => {
       tgForm.value.tg_chat_id = res.data.tg_chat_id || ''
       tgForm.value.tg_notify_enabled = res.data.tg_notify_enabled || '0'
     }
-  } catch (e) { console.error(e) }
+  } catch (e) {}
 }
 
 const saveTgConfig = async () => {
-  try { await axios.post('/api/system/config/save', tgForm.value); alert('TG通知渠道配置保存成功！') } catch (e) { alert('保存失败') }
+  try { await axios.post('/api/system/config/save', tgForm.value); alert('配置保存成功！') } catch (e) { alert('保存失败') }
 }
 
 const submitInit = async () => {
@@ -424,10 +480,34 @@ const submitInit = async () => {
   try { 
     const res = await axios.post('/api/system/init', initForm.value)
     if (res.data && res.data.status === 'success') {
-      window.location.reload() // 录入成功后强制重载，重新跑状态机直接丝滑进入后台监控
+      window.location.reload()
     }
-  } catch(e) { alert('初始化失败，请检查后端数据库连接') }
+  } catch(e) { alert('初始化失败，请检查连接') }
   finally { submitting.value = false }
+}
+
+// 🚀 登录表单提交逻辑
+const submitLogin = async () => {
+  submitting.value = true
+  const token = btoa(loginForm.value.username + ':' + loginForm.value.password)
+  axios.defaults.headers.common['Authorization'] = 'Basic ' + token
+  try {
+    await axios.get('/api/login')
+    localStorage.setItem('big_inspector_auth', token)
+    isLoggedIn.value = true
+    startTimers()
+    fetchAccounts()
+  } catch(e) {
+    alert('⚠️ 账号或密码错误，已被系统拦截！')
+    delete axios.defaults.headers.common['Authorization']
+  } finally {
+    submitting.value = false
+  }
+}
+
+const formatTime = (t) => {
+  if (!t || t === '获取中') return '获取中'
+  return t.substring(0, 10)
 }
 
 onMounted(() => checkSystemStatus())
@@ -441,7 +521,7 @@ body { background-color: #0b0f19; color: #cbd5e1; font-family: -apple-system, Bl
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
-/* 🚀 纯净第一关独立布局，实现物理隔离 */
+/* 🚀 纯净卡片界面，覆盖整个视口，完全阻断套娃 */
 .init-pure-wrapper { min-height: 100vh; background-color: #0b0f19; display: flex; justify-content: center; align-items: center; padding: 20px; width: 100vw; box-sizing: border-box; }
 .init-card { background: #111827; padding: 35px; border-radius: 12px; width: 100%; max-width: 480px; border: 1px solid #1f2937; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
 .init-card h2 { margin-top: 0; margin-bottom: 10px; font-size: 20px; color: #fff; text-align: center; }
@@ -449,7 +529,7 @@ body { background-color: #0b0f19; color: #cbd5e1; font-family: -apple-system, Bl
 
 .app-layout { display: flex; min-height: 100vh; }
 .sidebar { width: 250px; background: #111827; border-right: 1px solid #1f2937; display: flex; flex-direction: column; flex-shrink: 0; position: fixed; height: 100vh; z-index: 10; }
-.main-wrapper { flex: 1; margin-left: 250px; min-width: 0; display: flex; flex-direction: column; }
+.main-wrapper { flex: 1; margin-left: 250px; min-width: 0; display: flex; flex-direction: column; position: relative; }
 .main-content { padding: 25px; flex: 1; }
 .sidebar-brand { padding: 24px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #1f2937; font-weight: 700; font-size: 15px; color: #fff; letter-spacing: 0.5px; }
 .sidebar-menu { padding: 15px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; flex: 1; }
