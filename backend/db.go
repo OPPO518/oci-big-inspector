@@ -11,7 +11,6 @@ import (
 
 var DB *sql.DB
 
-// InitializeDB 负责在系统初载时，创建完美对齐的工业级数据库表结构
 func InitializeDB() {
 	dbDir := "/app/data"
 	_ = os.MkdirAll(dbDir, 0755)
@@ -23,18 +22,13 @@ func InitializeDB() {
 		log.Fatalf("❌ 无法打开 SQLite 数据库: %v", err)
 	}
 
-	// 1. 创建系统基础配置表
 	configTableQuery := `
 	CREATE TABLE IF NOT EXISTS system_config (
 		key TEXT PRIMARY KEY,
 		value TEXT
 	);`
-	_, err = DB.Exec(configTableQuery)
-	if err != nil {
-		log.Fatalf("❌ 创建 system_config 表失败: %v", err)
-	}
+	_, _ = DB.Exec(configTableQuery)
 
-	// 2. 🚀【核心修正】：创建满血完全体的 OCI 租户凭证表，把所有缺少的列全部锁死进初始化中
 	accountTableQuery := `
 	CREATE TABLE IF NOT EXISTS oci_accounts (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
