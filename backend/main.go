@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/tls"
 	"embed"
 	"encoding/json"
@@ -133,8 +132,8 @@ func HandleSystemMonitor(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stats)
 }
 
-func StartTgBotEngine(token string) { /* 保持原样 */ }
-func SendMessageToTG(text string) { /* 保持原样 */ }
+func StartTgBotEngine(token string) {}
+func SendMessageToTG(text string) {}
 func checkInitNeeded() bool { var count int; _ = DB.QueryRow("SELECT COUNT(*) FROM system_config WHERE key = 'username'").Scan(&count); return count == 0 }
 func getPublicIP() string { client := http.Client{Timeout: 5 * time.Second}; resp, err := client.Get("https://api.ipify.org"); if err == nil { defer resp.Body.Close(); ip, _ := io.ReadAll(resp.Body); return strings.TrimSpace(string(ip)) }; return "" }
 func startCertCheckTimer(target string) { go func() { for range time.Tick(24 * time.Hour) { runAcmeSubprocess(target, true) } }() }
@@ -173,9 +172,12 @@ func basicAuthWrapper(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// 🚀【语法修正】：使用临时变量 tokenVal 接收数据，彻底避开 map 指针死穴
 func HandleGetSystemConfig(w http.ResponseWriter, r *http.Request) {
 	res := make(map[string]string)
-	_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'tg_bot_token'").Scan(&res["tg_bot_token"])
+	var tokenVal string
+	_ = DB.QueryRow("SELECT value FROM system_config WHERE key = 'tg_bot_token'").Scan(&tokenVal)
+	res["tg_bot_token"] = tokenVal
 	json.NewEncoder(w).Encode(res)
 }
 
